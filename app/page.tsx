@@ -190,6 +190,7 @@ export default function Home() {
   const [wallets, setWallets] = useState<ParsedWallet[]>([]);
   const [parseWarnings, setParseWarnings] = useState<string[]>([]);
   const [lastImportSummary, setLastImportSummary] = useState("");
+  const [dataReady, setDataReady] = useState(false);
   const [autoTagging, setAutoTagging] = useState(true);
   const [toast, setToast] = useState("");
   const fileRef = useRef<HTMLInputElement>(null);
@@ -209,6 +210,23 @@ export default function Home() {
   useEffect(() => {
     window.localStorage.setItem("pocket-language", language);
   }, [language]);
+  useEffect(() => {
+    try {
+      const savedUploads = window.localStorage.getItem("pocket-uploads");
+      const savedTransactions = window.localStorage.getItem("pocket-transactions");
+      const savedWallets = window.localStorage.getItem("pocket-wallets");
+      if (savedUploads) setUploads(JSON.parse(savedUploads));
+      if (savedTransactions) setTransactions(JSON.parse(savedTransactions));
+      if (savedWallets) setWallets(JSON.parse(savedWallets));
+    } catch (error) {
+      console.warn("Pocketpals data could not be restored", error);
+    } finally {
+      setDataReady(true);
+    }
+  }, []);
+  useEffect(() => { if (dataReady) window.localStorage.setItem("pocket-uploads", JSON.stringify(uploads)); }, [uploads, dataReady]);
+  useEffect(() => { if (dataReady) window.localStorage.setItem("pocket-transactions", JSON.stringify(transactions)); }, [transactions, dataReady]);
+  useEffect(() => { if (dataReady) window.localStorage.setItem("pocket-wallets", JSON.stringify(wallets)); }, [wallets, dataReady]);
   const currentTheme = themeOptions.find((item) => item.key === theme)!;
   const c = translations[language];
   const spendTotal = useMemo(
