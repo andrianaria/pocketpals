@@ -5,7 +5,7 @@ export type ParsedWallet = { bank: string; accountName: string; accountNumber?: 
 export type ParseResult = { bank: string; transactions: ParsedTransaction[]; wallets: ParsedWallet[]; warnings: string[]; rowsFound: number };
 
 export const BANK_CATALOG = [
-  "DBS", "BCA", "Kartu Kredit BCA", "Mandiri", "BNI", "BRI", "BTN", "CIMB Niaga", "Danamon", "Permata", "OCBC", "UOB", "Maybank", "Panin", "HSBC", "Bank Jago", "SeaBank", "Bank Syariah Indonesia", "Bank Neo Commerce", "Other / format belum dikenali",
+  "DBS", "BCA", "Kartu Kredit BCA", "Mandiri", "BNI", "BRI", "BTN", "CIMB Niaga", "Danamon", "Permata", "OCBC", "UOB", "Maybank", "Panin", "HSBC", "Bank Jago", "SeaBank", "Bank Syariah Indonesia", "Bank Neo Commerce", "BTPN / Jenius", "Blu by BCA Digital", "Bank Mega", "Bank Sinarmas", "Allo Bank", "Bank Muamalat", "Bank Woori Saudara", "Other / format belum dikenali",
 ] as const;
 
 const money = (value: string | number | undefined) => {
@@ -46,6 +46,13 @@ export function detectBank(text: string, selectedBank: string) {
   if (/seabank/.test(t)) return "SeaBank";
   if (/syariah indonesia|bsi/.test(t)) return "Bank Syariah Indonesia";
   if (/neo commerce|neobank/.test(t)) return "Bank Neo Commerce";
+  if (/jenius|btpn/.test(t)) return "BTPN / Jenius";
+  if (/blu by bca|bca digital/.test(t)) return "Blu by BCA Digital";
+  if (/bank mega/.test(t)) return "Bank Mega";
+  if (/sinarmas/.test(t)) return "Bank Sinarmas";
+  if (/allo bank|allo/.test(t)) return "Allo Bank";
+  if (/muamalat/.test(t)) return "Bank Muamalat";
+  if (/woori saudara/.test(t)) return "Bank Woori Saudara";
   return selectedBank;
 }
 
@@ -92,12 +99,15 @@ export function parsePdfText(text: string, selectedBank: string, source: string)
     if (amount > 0) wallets.push({ bank, accountName: "Statement account", currency: "IDR", endingBalance: amount, source });
   }
   const transactions: ParsedTransaction[] = [];
-  const linePattern = /(\d{2}\/\d{2}\/\d{4})\s+(.+?)\s+(?:([0-9][0-9.,]*)\s+)?(?:([0-9][0-9.,]*)\s+)?([0-9][0-9.,]+)\s+Cr/g;
+  const linePattern = /(\d{2}\/\d{2}\/\d{4})\s+(?:\d{2}\/\d{2}\/\d{4}\s+)?(.+?)\s+([0-9][0-9.,]+)\s+Cr/g;
   while ((match = linePattern.exec(text)) && transactions.length < 500) {
-    const description = match[2].replace(/\s+/g, " ").trim();
-    const debit = money(match[3]); const credit = money(match[4]); const amount = debit || credit;
+    const body = match[2].replace(/\s+/g, " ").trim();
+    const numericTokens = body.match(/[0-9][0-9.,]*/g) ?? [];
+    const amountToken = numericTokens.at(-1) ?? "";
+    const description = amountToken ? body.slice(0, body.lastIndexOf(amountToken)).trim() : body;
+    const amount = money(amountToken);
     const [category, color, icon] = classify(description);
-    if (amount) transactions.push({ icon, title: description, meta: `${match[1]} · ${category}`, amount: `${credit && !debit ? "+" : "−"} ${formatIdr(amount)}`, color, category, date: match[1] });
+    if (amount) transactions.push({ icon, title: description || "Imported transaction", meta: `${match[1]} · ${category}`, amount: `− ${formatIdr(amount)}`, color, category, date: match[1] });
   }
   return { bank, transactions, wallets, warnings: [...(wallets.length ? [] : ["Saldo akhir belum terdeteksi otomatis."]), ...(transactions.length ? [] : ["Transaksi PDF perlu review manual atau contoh layout tambahan."])], rowsFound: transactions.length };
 }
