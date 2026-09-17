@@ -231,18 +231,34 @@ export function parsePdfText(
     /Statement Period\s*\/\s*Periode Rekening Koran\s+(.+?\d{4})/i,
   )?.[1];
   const wallets: ParsedWallet[] = [];
-  const endingPattern = /Ending Balance\s+([0-9][0-9.,]*)\s*(?:Cr|DR)?/gi;
+  const walletPattern =
+    /Ending Balance\s+([0-9][0-9.,]*)\s*(?:Cr|DR)?\s+(.+?)\s+Account Number:\s*([0-9]+)\s+Currency:\s*([A-Z]{3})/gi;
   let match: RegExpExecArray | null;
-  while ((match = endingPattern.exec(normalizedText)) && wallets.length < 20) {
+  while ((match = walletPattern.exec(normalizedText)) && wallets.length < 20) {
     const amount = money(match[1]);
     if (amount > 0)
       wallets.push({
         bank,
-        accountName: "Statement account",
-        currency: "IDR",
+        accountName: match[2].trim(),
+        accountNumber: match[3],
+        currency: match[4],
         endingBalance: amount,
         source,
       });
+  }
+  if (!wallets.length) {
+    const endingPattern = /Ending Balance\s+([0-9][0-9.,]*)\s*(?:Cr|DR)?/gi;
+    while ((match = endingPattern.exec(normalizedText)) && wallets.length < 20) {
+      const amount = money(match[1]);
+      if (amount > 0)
+        wallets.push({
+          bank,
+          accountName: "Statement account",
+          currency: "IDR",
+          endingBalance: amount,
+          source,
+        });
+    }
   }
   if (bank === "BCA" && /REKENING TAHAPAN/i.test(normalizedText)) {
     const statementPeriod = normalizedText.match(

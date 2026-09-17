@@ -172,6 +172,12 @@ const rupiah = (amount: number) =>
     currency: "IDR",
     maximumFractionDigits: 0,
   }).format(amount);
+const walletAmount = (amount: number, currency: string) =>
+  currency === "IDR"
+    ? rupiah(amount)
+    : `${currency} ${new Intl.NumberFormat("en-US", {
+        maximumFractionDigits: 2,
+      }).format(amount)}`;
 const monthOptions: { key: MonthKey; id: string; en: string }[] = [
   { key: "all", id: "Semua bulan", en: "All months" },
   { key: "2026-09", id: "September 2026", en: "September 2026" },
@@ -181,6 +187,15 @@ const monthOptions: { key: MonthKey; id: string; en: string }[] = [
 ];
 const transactionMonth = (date?: string) =>
   date && date.length >= 10 ? `${date.slice(6, 10)}-${date.slice(3, 5)}` : "";
+const walletKey = (wallet: ParsedWallet) =>
+  [
+    wallet.bank,
+    wallet.source,
+    wallet.accountNumber ?? wallet.accountName,
+    wallet.currency,
+  ].join(":");
+const uniqueWallets = (items: ParsedWallet[]) =>
+  Array.from(new Map(items.map((item) => [walletKey(item), item])).values());
 
 export default function Home() {
   const { user } = useUser();
@@ -239,7 +254,9 @@ export default function Home() {
           ).map((item, index) => ({ ...item, id: item.id ?? `restored-${index}-${item.date}` })),
         );
       }
-      if (savedWallets) setWallets(JSON.parse(savedWallets));
+      if (savedWallets) {
+        setWallets(uniqueWallets(JSON.parse(savedWallets) as ParsedWallet[]));
+      }
     } catch (error) {
       console.warn("Pocketpals data could not be restored", error);
     } finally {
@@ -322,6 +339,13 @@ export default function Home() {
       .sort(([, a], [, b]) => b - a)
       .slice(0, 4);
   }, [importedTransactions]);
+  const idrWalletTotal = useMemo(
+    () =>
+      wallets
+        .filter((wallet) => wallet.currency === "IDR")
+        .reduce((total, wallet) => total + wallet.endingBalance, 0),
+    [wallets],
+  );
   const chooseTheme = (key: ThemeKey) => {
     setTheme(key);
     setToast("Tema berhasil diganti ✨");
@@ -434,7 +458,14 @@ export default function Home() {
         })),
         ...items,
       ]);
-      setWallets((items) => [...result.wallets, ...items]);
+      setWallets((items) =>
+        uniqueWallets([
+          ...result.wallets,
+          ...items.filter(
+            (item) => !(item.bank === parsedBank && item.source === file.name),
+          ),
+        ]),
+      );
       setParseWarnings(result.warnings);
       setLastImportSummary(
         `${result.rowsFound} berhasil · ${result.failedRows} gagal${result.statementPeriod ? ` · periode ${result.statementPeriod}` : ""}${result.wallets.length ? ` · ${result.wallets.length} saldo rekening` : ""}`,
@@ -853,13 +884,8 @@ export default function Home() {
                     : "TOTAL FROM UPLOADS"}
                 </span>
                 <strong>
-                  {wallets.length
-                    ? rupiah(
-                        wallets.reduce(
-                          (total, wallet) => total + wallet.endingBalance,
-                          0,
-                        ),
-                      )
+                  {wallets.some((wallet) => wallet.currency === "IDR")
+                    ? rupiah(idrWalletTotal)
                     : uploads.length
                       ? language === "id"
                         ? "Menunggu parsing"
@@ -921,7 +947,10 @@ export default function Home() {
                       {wallet.bank} · {wallet.accountName}
                     </strong>
                     <small>{wallet.source}</small>
-                    <b>{rupiah(wallet.endingBalance)}</b>
+                    {wallet.accountNumber && (
+                      <small>Rekening · {wallet.accountNumber}</small>
+                    )}
+                    <b>{walletAmount(wallet.endingBalance, wallet.currency)}</b>
                     <span>
                       {language === "id"
                         ? `Saldo akhir · ${wallet.currency}`
