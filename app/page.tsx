@@ -139,40 +139,6 @@ const translations = {
     transport: "Transportasi",
   },
 } as const;
-const initialTransactions: ParsedTransaction[] = [
-  {
-    icon: "🍜",
-    title: "Makan siang",
-    meta: "Hari ini · Food & Drink",
-    amount: "− Rp 42.000",
-    color: "rose",
-    category: "Food & Drink",
-  },
-  {
-    icon: "🚕",
-    title: "Grab perjalanan",
-    meta: "Kemarin · Transportasi",
-    amount: "− Rp 28.500",
-    color: "blue",
-    category: "Transportasi",
-  },
-  {
-    icon: "🛍️",
-    title: "Belanja bulanan",
-    meta: "12 Sep · Kebutuhan",
-    amount: "− Rp 385.000",
-    color: "yellow",
-    category: "Lainnya",
-  },
-  {
-    icon: "💼",
-    title: "Gaji masuk",
-    meta: "01 Sep · Pemasukan",
-    amount: "+ Rp 12.500.000",
-    color: "green",
-    category: "Pemasukan",
-  },
-];
 const rupiah = (amount: number) =>
   new Intl.NumberFormat("id-ID", {
     style: "currency",
@@ -196,8 +162,7 @@ export default function Home() {
   const [bank, setBank] = useState<BankKey>("DBS");
   const [monthFilter, setMonthFilter] = useState<MonthKey>("all");
   const [uploads, setUploads] = useState<UploadItem[]>([]);
-  const [transactions, setTransactions] =
-    useState<ParsedTransaction[]>(initialTransactions);
+  const [transactions, setTransactions] = useState<ParsedTransaction[]>([]);
   const [wallets, setWallets] = useState<ParsedWallet[]>([]);
   const [parseWarnings, setParseWarnings] = useState<string[]>([]);
   const [lastImportSummary, setLastImportSummary] = useState("");
@@ -229,7 +194,15 @@ export default function Home() {
       );
       const savedWallets = window.localStorage.getItem("pocket-wallets");
       if (savedUploads) setUploads(JSON.parse(savedUploads));
-      if (savedTransactions) setTransactions(JSON.parse(savedTransactions));
+      if (savedTransactions) {
+        const restored = JSON.parse(savedTransactions) as ParsedTransaction[];
+        setTransactions(
+          restored.filter(
+            (item) =>
+              Boolean(item.date) && typeof item.amountValue === "number",
+          ),
+        );
+      }
       if (savedWallets) setWallets(JSON.parse(savedWallets));
     } catch (error) {
       console.warn("Pocketpals data could not be restored", error);
@@ -276,9 +249,24 @@ export default function Home() {
     return language === "id" ? option.id : option.en;
   };
   const spendTotal = useMemo(
-    () => (uploads.length ? 5820000 : 4820000),
-    [uploads.length],
+    () =>
+      filteredImportedTransactions
+        .filter((item) => item.direction === "debit")
+        .reduce((total, item) => total + item.amountValue, 0),
+    [filteredImportedTransactions],
   );
+  const categorySummary = useMemo(() => {
+    const counts = importedTransactions.reduce<Record<string, number>>(
+      (summary, item) => {
+        summary[item.category] = (summary[item.category] ?? 0) + 1;
+        return summary;
+      },
+      {},
+    );
+    return Object.entries(counts)
+      .sort(([, a], [, b]) => b - a)
+      .slice(0, 4);
+  }, [importedTransactions]);
   const chooseTheme = (key: ThemeKey) => {
     setTheme(key);
     setToast("Tema berhasil diganti ✨");
@@ -882,7 +870,13 @@ export default function Home() {
                     : "—"}
                 </div>
                 <div className="stat-change">
-                  <ArrowUpRight size={15} /> 12,8% <em>vs last month</em>
+                  {wallets.length
+                    ? language === "id"
+                      ? "Saldo terbaca dari statement"
+                      : "Balance parsed from statement"
+                    : language === "id"
+                      ? "Belum ada saldo statement"
+                      : "No statement balance yet"}
                 </div>
                 <div className="balance-spark">
                   <i />
@@ -898,9 +892,14 @@ export default function Home() {
                 <div className="stat-label">
                   {c.spending} <span>✿</span>
                 </div>
-                <div className="stat-value">{rupiah(spendTotal)}</div>
+                <div className="stat-value">
+                  {filteredImportedTransactions.length
+                    ? rupiah(spendTotal)
+                    : "—"}
+                </div>
                 <div className="stat-change down">
-                  <ArrowDownRight size={15} /> 8,4% <em>vs last month</em>
+                  {filteredImportedTransactions.length}{" "}
+                  {language === "id" ? "transaksi nyata" : "real transactions"}
                 </div>
                 <div className="expense-bars">
                   <i />
@@ -923,21 +922,20 @@ export default function Home() {
                 </div>
                 <button className="more-btn">•••</button>
               </div>
-              <div className="budget-line">
+              <div className="budget-empty-state">
                 <div className="budget-icon">🧸</div>
-                <div className="budget-copy">
-                  <div>
-                    <strong>{c.monthlyBudget}</strong>
-                    <span>Rp 7.500.000</span>
-                  </div>
-                  <div className="progress-track">
-                    <span style={{ width: "64%" }} />
-                  </div>
+                <div>
+                  <strong>
+                    {language === "id"
+                      ? "Belum ada budget tersimpan"
+                      : "No saved budget yet"}
+                  </strong>
                   <small>
-                    Rp 4.820.000 {c.used} <b>·</b> Rp 2.680.000 {c.left}
+                    {language === "id"
+                      ? "Tambahkan budget setelah data asli masuk."
+                      : "Add a budget after your real data is imported."}
                   </small>
                 </div>
-                <div className="budget-percent">64%</div>
               </div>
             </section>
             <section className="content-card transactions-card">
@@ -956,7 +954,7 @@ export default function Home() {
                 </button>
               </div>
               <div className="transactions-list">
-                {transactions.slice(0, 4).map((item, index) => (
+                {filteredImportedTransactions.slice(0, 4).map((item, index) => (
                   <div
                     className="transaction-row"
                     key={`${item.title}-${index}`}
@@ -976,6 +974,21 @@ export default function Home() {
                     <button className="row-more">•••</button>
                   </div>
                 ))}
+                {filteredImportedTransactions.length === 0 && (
+                  <div className="overview-empty-state">
+                    <span>🧾</span>
+                    <strong>
+                      {language === "id"
+                        ? "Belum ada transaksi nyata"
+                        : "No real transactions yet"}
+                    </strong>
+                    <small>
+                      {language === "id"
+                        ? "Upload statement untuk mulai melihat pergerakan uangmu."
+                        : "Upload a statement to start seeing your money movement."}
+                    </small>
+                  </div>
+                )}
               </div>
             </section>
           </div>
@@ -1093,29 +1106,43 @@ export default function Home() {
                   <span />
                 </button>
               </div>
-              <div className="tag-rule">
-                <span>🍜</span>
-                <div>
-                  <strong>{c.food}</strong>
-                  <small>GrabFood, GoFood, restaurants</small>
+              {categorySummary.length ? (
+                categorySummary.map(([category, count]) => (
+                  <div className="tag-rule" key={category}>
+                    <span>🏷️</span>
+                    <div>
+                      <strong>{category}</strong>
+                      <small>
+                        {language === "id"
+                          ? "Dari transaksi statement"
+                          : "From statement transactions"}
+                      </small>
+                    </div>
+                    <b>{count}</b>
+                  </div>
+                ))
+              ) : (
+                <div className="tag-empty-state">
+                  <span>🏷️</span>
+                  <strong>
+                    {language === "id"
+                      ? "Belum ada kategori nyata"
+                      : "No real categories yet"}
+                  </strong>
+                  <small>
+                    {language === "id"
+                      ? "Kategori akan muncul setelah statement diproses."
+                      : "Categories appear after a statement is processed."}
+                  </small>
                 </div>
-                <b>12</b>
-              </div>
-              <div className="tag-rule">
-                <span>🚕</span>
-                <div>
-                  <strong>{c.transport}</strong>
-                  <small>Grab, Gojek, toll, parking</small>
-                </div>
-                <b>8</b>
-              </div>
+              )}
               <button
                 className="manage-tags"
                 onClick={() =>
                   setToast(
                     language === "id"
-                      ? "Pengaturan tag akan tersedia setelah contoh statement masuk"
-                      : "Tag settings will be available after statement examples are added",
+                      ? "Aturan tag siap diatur setelah transaksi nyata masuk"
+                      : "Tag rules can be managed after real transactions are imported",
                   )
                 }
               >
