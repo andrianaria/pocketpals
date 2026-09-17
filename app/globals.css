@@ -1282,6 +1282,28 @@ select {
 .import-error-list { color: #ffc4cc; font-size: 11px; margin: 12px 0 0; padding-left: 17px; }
 .file-failed { background: #d97583 !important; }
 @media (max-width: 900px) { .upload-page-grid { grid-template-columns: 1fr; } }
+.transaction-row { position: relative; }
+.transaction-actions { display: flex; align-items: center; gap: 6px; margin-left: 10px; opacity: 0; transition: opacity .2s ease; }
+.transaction-row:hover .transaction-actions, .transaction-row:focus-within .transaction-actions { opacity: 1; }
+.row-action { border: 0; border-radius: 8px; min-height: 28px; padding: 0 9px; font-size: 11px; cursor: pointer; }
+.edit-action { color: var(--primary); background: var(--soft); }
+.delete-action { display: grid; place-items: center; width: 28px; padding: 0; color: #c95e72; background: #fff0f2; }
+.transaction-note { color: var(--primary) !important; }
+.edit-backdrop { position: fixed; inset: 0; z-index: 20; display: grid; place-items: center; padding: 20px; background: rgba(35, 29, 42, .42); backdrop-filter: blur(4px); }
+.edit-transaction-card { width: min(560px, 100%); display: grid; gap: 16px; padding: 24px; border: 1px solid var(--line); border-radius: 22px; background: var(--card); box-shadow: 0 24px 70px rgba(35, 29, 42, .25); }
+.edit-card-heading { display: flex; justify-content: space-between; align-items: flex-start; }
+.edit-card-heading h2 { margin: 3px 0 0; font-size: 22px; }
+.modal-close { display: grid; place-items: center; width: 34px; height: 34px; border: 0; border-radius: 50%; background: var(--soft); color: var(--ink); cursor: pointer; }
+.edit-transaction-card label { display: grid; gap: 7px; color: var(--ink); font-size: 13px; font-weight: 600; }
+.edit-transaction-card input, .edit-transaction-card select, .edit-transaction-card textarea { width: 100%; border: 1px solid var(--line); border-radius: 11px; background: var(--soft); color: var(--ink); padding: 11px 12px; font: inherit; font-size: 14px; outline: none; }
+.edit-transaction-card textarea { min-height: 84px; resize: vertical; }
+.edit-transaction-card input:focus, .edit-transaction-card select:focus, .edit-transaction-card textarea:focus { border-color: var(--primary); box-shadow: 0 0 0 3px rgba(243, 170, 119, .18); }
+.edit-field-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.edit-card-actions { display: flex; justify-content: flex-end; gap: 10px; padding-top: 4px; }
+.secondary-button, .primary-button { border: 0; border-radius: 11px; padding: 11px 15px; font-weight: 700; cursor: pointer; }
+.secondary-button { background: var(--soft); color: var(--ink); }
+.primary-button { background: var(--primary); color: white; }
+@media (max-width: 640px) { .transaction-actions { opacity: 1; } .edit-field-grid { grid-template-columns: 1fr; } .edit-card-actions { flex-direction: column-reverse; } .secondary-button, .primary-button { width: 100%; } }
 .section-view {
   display: grid;
   gap: 20px;

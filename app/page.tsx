@@ -43,6 +43,7 @@ type UploadItem = {
   size: string;
   parsedRows: number;
   warningCount: number;
+  statementPeriod?: string;
 };
 type ImportReport = {
   fileName: string;
@@ -54,6 +55,15 @@ type ImportReport = {
   failedRows: number;
   failures: string[];
 };
+const categoryOptions = [
+  ["Pemasukan", "green", "💼"],
+  ["Makanan & Minuman", "rose", "🍜"],
+  ["Transportasi", "blue", "🚕"],
+  ["Kartu Kredit", "purple", "💳"],
+  ["Transfer", "yellow", "↔️"],
+  ["Pajak", "yellow", "🧾"],
+  ["Lainnya", "purple", "📄"],
+] as const;
 const themeOptions: {
   key: ThemeKey;
   label: string;
@@ -186,6 +196,7 @@ export default function Home() {
   const [autoTagging, setAutoTagging] = useState(true);
   const [toast, setToast] = useState("");
   const [importReport, setImportReport] = useState<ImportReport | null>(null);
+  const [editingTransaction, setEditingTransaction] = useState<ParsedTransaction | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
   useEffect(() => {
     const savedTheme = window.localStorage.getItem(
@@ -220,7 +231,7 @@ export default function Home() {
           restored.filter(
             (item) =>
               Boolean(item.date) && typeof item.amountValue === "number",
-          ),
+          ).map((item, index) => ({ ...item, id: item.id ?? `restored-${index}-${item.date}` })),
         );
       }
       if (savedWallets) setWallets(JSON.parse(savedWallets));
@@ -292,6 +303,27 @@ export default function Home() {
     setToast("Tema berhasil diganti ✨");
     window.setTimeout(() => setToast(""), 2200);
   };
+  const saveEditedTransaction = () => {
+    if (!editingTransaction?.id) return;
+    const updated = {
+      ...editingTransaction,
+      meta: `${editingTransaction.date || "Tanggal belum terbaca"} · ${editingTransaction.category}`,
+      amount: `${editingTransaction.direction === "credit" ? "+" : "−"} ${rupiah(editingTransaction.amountValue)}`,
+    };
+    setTransactions((items) =>
+      items.map((item) => (item.id === updated.id ? updated : item)),
+    );
+    setEditingTransaction(null);
+    setToast("Transaksi berhasil disimpan ✨");
+    window.setTimeout(() => setToast(""), 2200);
+  };
+  const deleteTransaction = (transaction: ParsedTransaction) => {
+    if (!transaction.id) return;
+    if (!window.confirm(`Hapus transaksi “${transaction.title}”?`)) return;
+    setTransactions((items) => items.filter((item) => item.id !== transaction.id));
+    setToast("Transaksi dihapus");
+    window.setTimeout(() => setToast(""), 2200);
+  };
   const processFile = async (file: File) => {
     const extension = file.name.toLowerCase().split(".").pop();
     if (!extension || !["csv", "xls", "xlsx", "pdf"].includes(extension)) {
@@ -343,11 +375,17 @@ export default function Home() {
         BANK_CATALOG.includes(result.bank as BankKey) ? result.bank : bank
       ) as BankKey;
       setBank(parsedBank);
-      setTransactions((items) => [...result.transactions, ...items]);
+      setTransactions((items) => [
+        ...result.transactions.map((item, index) => ({
+          ...item,
+          id: item.id ?? `import-${Date.now()}-${index}`,
+        })),
+        ...items,
+      ]);
       setWallets((items) => [...result.wallets, ...items]);
       setParseWarnings(result.warnings);
       setLastImportSummary(
-        `${result.rowsFound} berhasil · ${result.failedRows} gagal${result.wallets.length ? ` · ${result.wallets.length} saldo rekening` : ""}`,
+        `${result.rowsFound} berhasil · ${result.failedRows} gagal${result.statementPeriod ? ` · periode ${result.statementPeriod}` : ""}${result.wallets.length ? ` · ${result.wallets.length} saldo rekening` : ""}`,
       );
       setImportReport({ fileName: file.name, bank: parsedBank, progress: 100, status: "complete", totalRows: result.rowsFound + result.failedRows, successRows: result.rowsFound, failedRows: result.failedRows, failures: result.failureDetails.length ? result.failureDetails : result.warnings });
       const kb = `${Math.max(1, Math.round(file.size / 1024))} KB`;
@@ -360,6 +398,7 @@ export default function Home() {
           size: kb,
           parsedRows: result.rowsFound,
           warningCount: result.warnings.length,
+          statementPeriod: result.statementPeriod,
         },
         ...items.filter((item) => !(item.name === file.name && item.bank === parsedBank)),
       ]);
@@ -581,9 +620,9 @@ export default function Home() {
                 <span>{language === "id" ? "Nominal" : "Amount"}</span>
               </div>
               {filteredTransactions.map((item, index) => (
-                <div
-                  className="transaction-row"
-                  key={`full-${item.title}-${index}`}
+                  <div
+                    className="transaction-row"
+                  key={item.id ?? `full-${item.title}-${index}`}
                 >
                   <div className={`transaction-icon ${item.color}`}>
                     {item.icon}
@@ -591,21 +630,32 @@ export default function Home() {
                   <div className="transaction-info">
                     <strong>{item.title}</strong>
                     <small>{item.meta}</small>
+                    {item.note && <small className="transaction-note">📝 {item.note}</small>}
                   </div>
                   <span className="list-category">
-                    {item.color === "green"
-                      ? language === "id"
-                        ? "Pemasukan"
-                        : "Income"
-                      : item.color === "blue"
-                        ? c.transport
-                        : c.food}
+                    {item.category}
                   </span>
                   <strong
                     className={`amount ${item.amount.startsWith("+") ? "positive" : ""}`}
                   >
                     {item.amount}
                   </strong>
+                  <div className="transaction-actions">
+                    <button
+                      className="row-action edit-action"
+                      aria-label={`Edit ${item.title}`}
+                      onClick={() => setEditingTransaction(item)}
+                    >
+                      Edit
+                    </button>
+                    <button
+                      className="row-action delete-action"
+                      aria-label={`Hapus ${item.title}`}
+                      onClick={() => deleteTransaction(item)}
+                    >
+                      <X size={14} />
+                    </button>
+                  </div>
                 </div>
               ))}
             </div>
@@ -894,7 +944,7 @@ export default function Home() {
               </section>
               <section className="content-card import-history-card">
                 <div className="card-heading"><div><h3>{c.uploaded} <span>🗂️</span></h3><p>{language === "id" ? "Semua percobaan upload tersimpan di sini." : "Every upload attempt is saved here."}</p></div><strong>{uploads.length}</strong></div>
-                {uploads.length === 0 ? <div className="overview-empty-state"><span>📂</span><strong>{language === "id" ? "Belum ada statement" : "No statements yet"}</strong><small>{language === "id" ? "Upload file pertamamu untuk mulai." : "Upload your first file to begin."}</small></div> : <div className="upload-history full-history">{uploads.map((file) => <div className="file-row" key={file.id}><FileText size={16} /><div><strong>{file.name}</strong><small>{file.bank} · {file.size} · {file.parsedRows} berhasil{file.warningCount ? " · review" : ""}</small></div><span className={`file-check ${file.status === "Menunggu" ? "file-failed" : ""}`}>{file.status === "Menunggu" ? <X size={13} /> : <Check size={13} />}</span></div>)}</div>}
+                {uploads.length === 0 ? <div className="overview-empty-state"><span>📂</span><strong>{language === "id" ? "Belum ada statement" : "No statements yet"}</strong><small>{language === "id" ? "Upload file pertamamu untuk mulai." : "Upload your first file to begin."}</small></div> : <div className="upload-history full-history">{uploads.map((file) => <div className="file-row" key={file.id}><FileText size={16} /><div><strong>{file.name}</strong><small>{file.bank} · {file.size} · {file.parsedRows} berhasil{file.warningCount ? " · review" : ""}</small>{file.statementPeriod && <small>Periode statement: {file.statementPeriod}</small>}</div><span className={`file-check ${file.status === "Menunggu" ? "file-failed" : ""}`}>{file.status === "Menunggu" ? <X size={13} /> : <Check size={13} />}</span></div>)}</div>}
               </section>
             </div>
           </section>
@@ -1273,6 +1323,39 @@ export default function Home() {
       {toast && (
         <div className="toast">
           <Check size={16} /> {toast}
+        </div>
+      )}
+      {editingTransaction && (
+        <div className="edit-backdrop" role="presentation" onClick={() => setEditingTransaction(null)}>
+          <form
+            className="edit-transaction-card"
+            onSubmit={(event) => {
+              event.preventDefault();
+              saveEditedTransaction();
+            }}
+            onClick={(event) => event.stopPropagation()}
+          >
+            <div className="edit-card-heading">
+              <div>
+                <span className="eyebrow">Pocketpals</span>
+                <h2>Edit transaksi ✨</h2>
+              </div>
+              <button type="button" className="modal-close" onClick={() => setEditingTransaction(null)} aria-label="Tutup editor"><X size={18} /></button>
+            </div>
+            <label>Nama / keterangan transaksi<input value={editingTransaction.title} onChange={(event) => setEditingTransaction({ ...editingTransaction, title: event.target.value })} /></label>
+            <div className="edit-field-grid">
+              <label>Tanggal<input value={editingTransaction.date ?? ""} onChange={(event) => setEditingTransaction({ ...editingTransaction, date: event.target.value })} placeholder="DD/MM/YYYY" /></label>
+              <label>Nominal<input type="number" min="0" value={editingTransaction.amountValue} onChange={(event) => setEditingTransaction({ ...editingTransaction, amountValue: Number(event.target.value) || 0 })} /></label>
+            </div>
+            <div className="edit-field-grid">
+              <label>Kategori<select value={editingTransaction.category} onChange={(event) => { const selected = categoryOptions.find(([name]) => name === event.target.value) ?? categoryOptions[6]; setEditingTransaction({ ...editingTransaction, category: selected[0], color: selected[1], icon: selected[2] }); }}>
+                {categoryOptions.map(([name]) => <option key={name} value={name}>{name}</option>)}
+              </select></label>
+              <label>Jenis<select value={editingTransaction.direction} onChange={(event) => setEditingTransaction({ ...editingTransaction, direction: event.target.value as "credit" | "debit" })}><option value="debit">Pengeluaran</option><option value="credit">Pemasukan</option></select></label>
+            </div>
+            <label>Catatan pribadi<textarea value={editingTransaction.note ?? ""} onChange={(event) => setEditingTransaction({ ...editingTransaction, note: event.target.value })} placeholder="Contoh: reimbursement kantor, langganan, atau keperluan lain…" /></label>
+            <div className="edit-card-actions"><button type="button" className="secondary-button" onClick={() => setEditingTransaction(null)}>Batal</button><button type="submit" className="primary-button">Simpan perubahan</button></div>
+          </form>
         </div>
       )}
     </main>

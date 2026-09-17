@@ -1,6 +1,7 @@
 import * as XLSX from "xlsx";
 
 export type ParsedTransaction = {
+  id?: string;
   icon: string;
   title: string;
   meta: string;
@@ -9,6 +10,7 @@ export type ParsedTransaction = {
   direction: "credit" | "debit";
   color: string;
   category: string;
+  note?: string;
   date?: string;
 };
 export type ParsedWallet = {
@@ -27,6 +29,7 @@ export type ParseResult = {
   rowsFound: number;
   failedRows: number;
   failureDetails: string[];
+  statementPeriod?: string;
 };
 
 export const BANK_CATALOG = [
@@ -224,6 +227,9 @@ export function parsePdfText(
 ): ParseResult {
   const bank = detectBank(text, selectedBank);
   const normalizedText = text.replace(/\u00a0/g, " ").replace(/\s+/g, " ").trim();
+  const statementPeriod = normalizedText.match(
+    /Statement Period\s*\/\s*Periode Rekening Koran\s+(.+?\d{4})/i,
+  )?.[1];
   const wallets: ParsedWallet[] = [];
   const endingPattern = /Ending Balance\s+([0-9][0-9.,]*)\s*(?:Cr|DR)?/gi;
   let match: RegExpExecArray | null;
@@ -276,5 +282,6 @@ export function parsePdfText(
     rowsFound: transactions.length,
     failedRows: transactions.length ? 0 : 1,
     failureDetails: transactions.length ? [] : ["Format PDF belum cocok dengan pola transaksi yang dikenali."],
+    statementPeriod,
   };
 }
