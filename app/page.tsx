@@ -13,6 +13,7 @@ import {
   ArrowUpRight,
   ArrowDownRight,
   FileText,
+  Search,
   Check,
   X,
   Heart,
@@ -187,6 +188,7 @@ export default function Home() {
   const [active, setActive] = useState("Overview");
   const [bank, setBank] = useState<BankKey>("DBS");
   const [monthFilter, setMonthFilter] = useState<MonthKey>("all");
+  const [transactionSearch, setTransactionSearch] = useState("");
   const [uploads, setUploads] = useState<UploadItem[]>([]);
   const [transactions, setTransactions] = useState<ParsedTransaction[]>([]);
   const [wallets, setWallets] = useState<ParsedWallet[]>([]);
@@ -263,17 +265,34 @@ export default function Home() {
     [transactions],
   );
   const filteredTransactions = useMemo(() => {
-    if (monthFilter === "all") return transactions;
-    return transactions.filter(
-      (item) => transactionMonth(item.date) === monthFilter,
-    );
-  }, [monthFilter, transactions]);
+    const query = transactionSearch.trim().toLocaleLowerCase("id-ID");
+    const compactQuery = query.replace(/\D/g, "");
+    return transactions.filter((item) => {
+      const matchesMonth =
+        monthFilter === "all" || transactionMonth(item.date) === monthFilter;
+      if (!matchesMonth) return false;
+      if (!query) return true;
+      const searchableText = [
+        item.title,
+        item.category,
+        item.note ?? "",
+        item.meta,
+        item.amount,
+        rupiah(item.amountValue),
+      ]
+        .join(" ")
+        .toLocaleLowerCase("id-ID");
+      const compactAmount = String(item.amountValue).replace(/\D/g, "");
+      return (
+        searchableText.includes(query) ||
+        (compactQuery.length > 0 && compactAmount.includes(compactQuery))
+      );
+    });
+  }, [monthFilter, transactionSearch, transactions]);
   const filteredImportedTransactions = useMemo(() => {
-    if (monthFilter === "all") return importedTransactions;
-    return importedTransactions.filter(
-      (item) => transactionMonth(item.date) === monthFilter,
-    );
-  }, [importedTransactions, monthFilter]);
+    const importedIds = new Set(importedTransactions.map((item) => item.id));
+    return filteredTransactions.filter((item) => importedIds.has(item.id));
+  }, [filteredTransactions, importedTransactions]);
   const monthLabel = (month: MonthKey) => {
     const option =
       monthOptions.find((item) => item.key === month) ?? monthOptions[0];
@@ -581,7 +600,7 @@ export default function Home() {
         </header>
         {active === "Transactions" && (
           <section className="section-view">
-            <div className="section-toolbar">
+            <div className="section-toolbar transaction-toolbar">
               <div>
                 <h2>
                   {c.recent} <span>🧾</span>
@@ -592,7 +611,41 @@ export default function Home() {
                     : "All transactions from uploaded statements."}
                 </p>
               </div>
-              <label className="month-button month-control">
+              <div className="transaction-tools">
+                <label className="transaction-search">
+                  <Search size={16} aria-hidden="true" />
+                  <span className="sr-only">
+                    {language === "id"
+                      ? "Cari transaksi"
+                      : "Search transactions"}
+                  </span>
+                  <input
+                    type="search"
+                    value={transactionSearch}
+                    onChange={(event) => setTransactionSearch(event.target.value)}
+                    placeholder={
+                      language === "id"
+                        ? "Cari deskripsi, kategori, remarks, nominal…"
+                        : "Search description, category, remarks, amount…"
+                    }
+                    aria-label={
+                      language === "id"
+                        ? "Cari deskripsi, kategori, remarks, atau nominal"
+                        : "Search description, category, remarks, or amount"
+                    }
+                  />
+                  {transactionSearch && (
+                    <button
+                      type="button"
+                      className="clear-search"
+                      aria-label={language === "id" ? "Hapus pencarian" : "Clear search"}
+                      onClick={() => setTransactionSearch("")}
+                    >
+                      <X size={14} />
+                    </button>
+                  )}
+                </label>
+                <label className="month-button month-control">
                 <select
                   aria-label={
                     language === "id"
@@ -611,7 +664,8 @@ export default function Home() {
                   ))}
                 </select>
                 <ChevronDown size={16} />
-              </label>
+                </label>
+              </div>
             </div>
             <div className="transaction-summary">
               <div>
