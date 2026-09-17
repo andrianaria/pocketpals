@@ -344,12 +344,12 @@ export default function Home() {
     category: string,
   ) => {
     if (!transaction.id) return;
-    const selected =
-      categoryOptions.find(([name]) => name === category) ?? categoryOptions[6];
+    const selected = categoryOptions.find(([name]) => name === category);
     updateTransactionInline(transaction.id, {
-      category: selected[0],
-      color: selected[1],
-      icon: selected[2],
+      category,
+      ...(selected
+        ? { color: selected[1], icon: selected[2] }
+        : {}),
     });
   };
   const processFile = async (file: File) => {
