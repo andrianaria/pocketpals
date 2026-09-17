@@ -40,6 +40,16 @@ type UploadItem = {
   parsedRows: number;
   warningCount: number;
 };
+type ImportReport = {
+  fileName: string;
+  bank: BankKey;
+  progress: number;
+  status: "reading" | "parsing" | "complete" | "error";
+  totalRows: number;
+  successRows: number;
+  failedRows: number;
+  failures: string[];
+};
 const themeOptions: {
   key: ThemeKey;
   label: string;
@@ -97,6 +107,7 @@ const translations = {
     personal: "Ruang pribadi",
     food: "Makanan & Minuman",
     transport: "Transportasi",
+    uploadStatement: "Upload statement",
   },
   en: {
     date: "MONDAY, 16 SEPTEMBER 2026",
@@ -137,6 +148,7 @@ const translations = {
     personal: "Personal space",
     food: "Food & Drink",
     transport: "Transportasi",
+    uploadStatement: "Upload statement",
   },
 } as const;
 const rupiah = (amount: number) =>
@@ -169,6 +181,7 @@ export default function Home() {
   const [dataReady, setDataReady] = useState(false);
   const [autoTagging, setAutoTagging] = useState(true);
   const [toast, setToast] = useState("");
+  const [importReport, setImportReport] = useState<ImportReport | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
   useEffect(() => {
     const savedTheme = window.localStorage.getItem(
@@ -287,31 +300,35 @@ export default function Home() {
     setToast(
       language === "id" ? "Sedang membaca statement…" : "Reading statement…",
     );
+    setImportReport({ fileName: file.name, bank, progress: 8, status: "reading", totalRows: 0, successRows: 0, failedRows: 0, failures: [] });
     try {
       let result;
-      if (extension === "csv")
+      if (extension === "csv") {
+        setImportReport((report) => report && { ...report, progress: 35, status: "parsing" });
         result = parseCsvText(await file.text(), bank, file.name);
-      else if (extension === "xls" || extension === "xlsx")
+      } else if (extension === "xls" || extension === "xlsx") {
+        setImportReport((report) => report && { ...report, progress: 35, status: "parsing" });
         result = parseWorkbook(await file.arrayBuffer(), bank, file.name);
-      else {
+      } else {
         const pdfjs = await import("pdfjs-dist/legacy/build/pdf.mjs");
-        const document = await pdfjs.getDocument({
+        const pdfDocument = await pdfjs.getDocument({
           data: new Uint8Array(await file.arrayBuffer()),
           disableWorker: true,
         }).promise;
         const pages: string[] = [];
         for (
           let pageNumber = 1;
-          pageNumber <= document.numPages;
+          pageNumber <= pdfDocument.numPages;
           pageNumber += 1
         ) {
-          const page = await document.getPage(pageNumber);
+          const page = await pdfDocument.getPage(pageNumber);
           const content = await page.getTextContent();
           pages.push(
             content.items
-              .map((item) => ("str" in item ? item.str : ""))
+              .map((item) => (item && "str" in item ? item.str : ""))
               .join(" "),
           );
+          setImportReport((report) => report && { ...report, progress: 15 + Math.round((pageNumber / pdfDocument.numPages) * 55), status: "parsing" });
         }
         result = parsePdfText(pages.join("\n"), bank, file.name);
       }
@@ -323,8 +340,9 @@ export default function Home() {
       setWallets((items) => [...result.wallets, ...items]);
       setParseWarnings(result.warnings);
       setLastImportSummary(
-        `${result.rowsFound} transaksi${result.wallets.length ? ` · ${result.wallets.length} saldo rekening` : ""}`,
+        `${result.rowsFound} berhasil · ${result.failedRows} gagal${result.wallets.length ? ` · ${result.wallets.length} saldo rekening` : ""}`,
       );
+      setImportReport({ fileName: file.name, bank: parsedBank, progress: 100, status: "complete", totalRows: result.rowsFound + result.failedRows, successRows: result.rowsFound, failedRows: result.failedRows, failures: result.failureDetails.length ? result.failureDetails : result.warnings });
       const kb = `${Math.max(1, Math.round(file.size / 1024))} KB`;
       setUploads((items) => [
         {
@@ -348,7 +366,8 @@ export default function Home() {
       setParseWarnings([
         "File berhasil dipilih tetapi belum bisa dipetakan otomatis. Coba format statement lain atau review kolomnya.",
       ]);
-      setLastImportSummary("0 transaksi · perlu review");
+      setLastImportSummary("0 berhasil · 1 gagal · perlu review");
+      setImportReport({ fileName: file.name, bank, progress: 100, status: "error", totalRows: 1, successRows: 0, failedRows: 1, failures: ["File tidak bisa dibaca di browser atau formatnya belum dikenali."] });
       const kb = `${Math.max(1, Math.round(file.size / 1024))} KB`;
       setUploads((items) => [
         {
@@ -367,7 +386,9 @@ export default function Home() {
     window.setTimeout(() => setToast(""), 3000);
   };
   const view =
-    active === "Transactions"
+    active === "Upload statement"
+      ? "upload"
+      : active === "Transactions"
       ? "transactions"
       : active === "My wallets"
         ? "wallets"
@@ -389,6 +410,7 @@ export default function Home() {
             { label: c.overview, key: "Overview", icon: LayoutDashboard },
             { label: c.transactions, key: "Transactions", icon: ReceiptText },
             { label: c.wallets, key: "My wallets", icon: WalletCards },
+            { label: c.uploadStatement, key: "Upload statement", icon: Upload },
           ].map(({ label, key, icon: Icon }) => (
             <button
               key={key}
@@ -440,6 +462,8 @@ export default function Home() {
                 ? c.transactions
                 : active === "My wallets"
                   ? c.wallets
+                  : active === "Upload statement"
+                    ? c.uploadStatement
                   : c.greeting}{" "}
               <span>૮ ˶ᵔ ᵕ ᵔ˶ ა</span>
             </h1>
@@ -822,6 +846,52 @@ export default function Home() {
                 )}
               </article>
             </section>
+          </section>
+        )}
+        {active === "Upload statement" && (
+          <section className="section-view upload-page">
+            <div className="section-toolbar">
+              <div>
+                <h2>{c.uploadStatement} <span>🛸</span></h2>
+                <p>{language === "id" ? "Upload, rapikan, dan cek hasil import statement-mu." : "Upload, tidy, and review your imported statements."}</p>
+              </div>
+              <span className="upload-page-count">{uploads.length} {language === "id" ? "file tersimpan" : "saved files"}</span>
+            </div>
+            <div className="upload-page-grid">
+              <section className="upload-card dedicated-upload-card">
+                <div className="upload-confetti">✦</div>
+                <div className="upload-title">
+                  <div className="upload-illustration">🛸</div>
+                  <div><h3>{c.statements} <span>♡</span></h3><p>{c.statementsSub}</p></div>
+                </div>
+                <div className="bank-options" aria-label="Pilih bank">
+                  <p>{c.which}</p>
+                  <div className="bank-select-card">
+                    <span className="bank-logo">{bank === "DBS" ? "dbs" : bank.includes("BCA") ? "bca" : "bank"}</span>
+                    <select className="bank-select" aria-label="Pilih bank" value={bank} onChange={(event) => setBank(event.target.value as BankKey)}>
+                      {BANK_CATALOG.map((item) => <option key={item} value={item}>{item}</option>)}
+                    </select>
+                    <ChevronDown size={16} />
+                  </div>
+                </div>
+                <input ref={fileRef} type="file" hidden accept=".pdf,.csv,.xlsx,.xls" onChange={(e) => e.target.files?.[0] && processFile(e.target.files[0])} />
+                <button className="drop-zone" onClick={() => fileRef.current?.click()} onDragOver={(event) => event.preventDefault()} onDrop={(event) => { event.preventDefault(); const file = event.dataTransfer.files?.[0]; if (file) processFile(file); }}>
+                  <Upload size={20} /><strong>{c.click}</strong><span>{c.drop}</span><small>{c.formats}</small>
+                </button>
+                {importReport && (
+                  <div className="import-progress-panel">
+                    <div className="import-progress-label"><strong>{importReport.status === "complete" ? "Import selesai" : importReport.status === "error" ? "Import perlu review" : "Sedang membaca statement…"}</strong><span>{importReport.progress}%</span></div>
+                    <div className="import-progress-track"><span style={{ width: `${importReport.progress}%` }} /></div>
+                    <div className="import-stat-grid"><div><strong>{importReport.totalRows}</strong><small>Total baris</small></div><div className="success"><strong>{importReport.successRows}</strong><small>Berhasil</small></div><div className="failed"><strong>{importReport.failedRows}</strong><small>Gagal</small></div></div>
+                    {importReport.failures.length > 0 && <ul className="import-error-list">{importReport.failures.slice(0, 3).map((failure, index) => <li key={`${failure}-${index}`}>{failure}</li>)}</ul>}
+                  </div>
+                )}
+              </section>
+              <section className="content-card import-history-card">
+                <div className="card-heading"><div><h3>{c.uploaded} <span>🗂️</span></h3><p>{language === "id" ? "Semua percobaan upload tersimpan di sini." : "Every upload attempt is saved here."}</p></div><strong>{uploads.length}</strong></div>
+                {uploads.length === 0 ? <div className="overview-empty-state"><span>📂</span><strong>{language === "id" ? "Belum ada statement" : "No statements yet"}</strong><small>{language === "id" ? "Upload file pertamamu untuk mulai." : "Upload your first file to begin."}</small></div> : <div className="upload-history full-history">{uploads.map((file) => <div className="file-row" key={file.id}><FileText size={16} /><div><strong>{file.name}</strong><small>{file.bank} · {file.size} · {file.parsedRows} berhasil{file.warningCount ? " · review" : ""}</small></div><span className={`file-check ${file.status === "Menunggu" ? "file-failed" : ""}`}>{file.status === "Menunggu" ? <X size={13} /> : <Check size={13} />}</span></div>)}</div>}
+              </section>
+            </div>
           </section>
         )}
         <div className="main-grid">

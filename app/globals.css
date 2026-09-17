@@ -1257,9 +1257,31 @@ select {
   height: 33px !important;
 }
 .view-transactions .main-grid,
-.view-wallets .main-grid {
+.view-wallets .main-grid,
+.view-upload .main-grid {
   display: none;
 }
+.view-overview .right-column .upload-card { display: none; }
+.upload-page { margin-bottom: 24px; }
+.upload-page-count { color: var(--muted); font-size: 13px; padding-top: 7px; }
+.upload-page-grid { display: grid; grid-template-columns: minmax(320px, 0.9fr) minmax(360px, 1.1fr); gap: 20px; align-items: start; }
+.dedicated-upload-card { min-height: 470px; }
+.import-history-card { min-height: 470px; }
+.full-history { max-height: 380px; overflow: auto; }
+.import-progress-panel { margin-top: 18px; padding-top: 16px; border-top: 1px solid rgba(255,255,255,.16); }
+.import-progress-label { display: flex; justify-content: space-between; font-size: 12px; margin-bottom: 8px; }
+.import-progress-track { height: 8px; background: rgba(255,255,255,.14); border-radius: 99px; overflow: hidden; }
+.import-progress-track span { display: block; height: 100%; background: var(--primary); border-radius: inherit; transition: width .35s ease; }
+.import-stat-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-top: 14px; }
+.import-stat-grid > div { background: rgba(255,255,255,.08); border-radius: 12px; padding: 10px; text-align: center; }
+.import-stat-grid strong, .import-stat-grid small { display: block; }
+.import-stat-grid strong { font-size: 18px; }
+.import-stat-grid small { color: var(--muted); font-size: 10px; margin-top: 2px; }
+.import-stat-grid .success strong { color: #9de0ac; }
+.import-stat-grid .failed strong { color: #ffb0b8; }
+.import-error-list { color: #ffc4cc; font-size: 11px; margin: 12px 0 0; padding-left: 17px; }
+.file-failed { background: #d97583 !important; }
+@media (max-width: 900px) { .upload-page-grid { grid-template-columns: 1fr; } }
 .section-view {
   display: grid;
   gap: 20px;

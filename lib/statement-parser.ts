@@ -25,6 +25,8 @@ export type ParseResult = {
   wallets: ParsedWallet[];
   warnings: string[];
   rowsFound: number;
+  failedRows: number;
+  failureDetails: string[];
 };
 
 export const BANK_CATALOG = [
@@ -126,6 +128,8 @@ function rowsToResult(
   source: string,
 ): ParseResult {
   const transactions: ParsedTransaction[] = [];
+  let failedRows = 0;
+  const failureDetails: string[] = [];
   for (const row of rows) {
     const entries = Object.entries(row);
     const get = (patterns: RegExp[]) =>
@@ -143,7 +147,11 @@ function rowsToResult(
     const credit = money(get([/credit|deposit|masuk|kredit/]));
     const amount =
       debit || credit || money(get([/amount|nominal|jumlah|value/]));
-    if (!description && !date && !amount) continue;
+    if (!description && !date && !amount) {
+      failedRows += 1;
+      if (failureDetails.length < 5) failureDetails.push("Baris tanpa tanggal, keterangan, atau nominal.");
+      continue;
+    }
     const [category, color, icon] = classify(description);
     transactions.push({
       icon,
@@ -165,6 +173,8 @@ function rowsToResult(
       ? []
       : ["Header transaksi belum terdeteksi. Review kolom diperlukan."],
     rowsFound: transactions.length,
+    failedRows,
+    failureDetails,
   };
 }
 
@@ -188,6 +198,8 @@ export function parseWorkbook(
     wallets: [],
     warnings: ["Tidak menemukan baris transaksi yang bisa dipetakan."],
     rowsFound: 0,
+    failedRows: 0,
+    failureDetails: [],
   };
 }
 
@@ -211,10 +223,11 @@ export function parsePdfText(
   source: string,
 ): ParseResult {
   const bank = detectBank(text, selectedBank);
+  const normalizedText = text.replace(/\u00a0/g, " ").replace(/\s+/g, " ").trim();
   const wallets: ParsedWallet[] = [];
   const endingPattern = /Ending Balance\s+([0-9][0-9.,]*)\s*(?:Cr|DR)?/gi;
   let match: RegExpExecArray | null;
-  while ((match = endingPattern.exec(text)) && wallets.length < 20) {
+  while ((match = endingPattern.exec(normalizedText)) && wallets.length < 20) {
     const amount = money(match[1]);
     if (amount > 0)
       wallets.push({
@@ -228,7 +241,7 @@ export function parsePdfText(
   const transactions: ParsedTransaction[] = [];
   const linePattern =
     /(\d{2}\/\d{2}\/\d{4})\s+(?:\d{2}\/\d{2}\/\d{4}\s+)?(.+?)\s+([0-9][0-9.,]+)\s+Cr/g;
-  while ((match = linePattern.exec(text)) && transactions.length < 500) {
+  while ((match = linePattern.exec(normalizedText)) && transactions.length < 500) {
     const body = match[2].replace(/\s+/g, " ").trim();
     const numericTokens = body.match(/[0-9][0-9.,]*/g) ?? [];
     const amountToken = numericTokens.at(-1) ?? "";
@@ -261,5 +274,7 @@ export function parsePdfText(
         : ["Transaksi PDF perlu review manual atau contoh layout tambahan."]),
     ],
     rowsFound: transactions.length,
+    failedRows: transactions.length ? 0 : 1,
+    failureDetails: transactions.length ? [] : ["Format PDF belum cocok dengan pola transaksi yang dikenali."],
   };
 }
