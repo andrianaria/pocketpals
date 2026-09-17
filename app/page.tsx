@@ -186,7 +186,8 @@ const monthOptions: { key: MonthKey; id: string; en: string }[] = [
   { key: "2026-07", id: "Juli 2026", en: "July 2026" },
   { key: "2026-06", id: "Juni 2026", en: "June 2026" },
 ];
-const transactionMonth = (date?: string) => date && date.length >= 10 ? `${date.slice(6, 10)}-${date.slice(3, 5)}` : "";
+const transactionMonth = (date?: string) =>
+  date && date.length >= 10 ? `${date.slice(6, 10)}-${date.slice(3, 5)}` : "";
 
 export default function Home() {
   const [theme, setTheme] = useState<ThemeKey>("sakura");
@@ -223,7 +224,9 @@ export default function Home() {
   useEffect(() => {
     try {
       const savedUploads = window.localStorage.getItem("pocket-uploads");
-      const savedTransactions = window.localStorage.getItem("pocket-transactions");
+      const savedTransactions = window.localStorage.getItem(
+        "pocket-transactions",
+      );
       const savedWallets = window.localStorage.getItem("pocket-wallets");
       if (savedUploads) setUploads(JSON.parse(savedUploads));
       if (savedTransactions) setTransactions(JSON.parse(savedTransactions));
@@ -234,22 +237,42 @@ export default function Home() {
       setDataReady(true);
     }
   }, []);
-  useEffect(() => { if (dataReady) window.localStorage.setItem("pocket-uploads", JSON.stringify(uploads)); }, [uploads, dataReady]);
-  useEffect(() => { if (dataReady) window.localStorage.setItem("pocket-transactions", JSON.stringify(transactions)); }, [transactions, dataReady]);
-  useEffect(() => { if (dataReady) window.localStorage.setItem("pocket-wallets", JSON.stringify(wallets)); }, [wallets, dataReady]);
+  useEffect(() => {
+    if (dataReady)
+      window.localStorage.setItem("pocket-uploads", JSON.stringify(uploads));
+  }, [uploads, dataReady]);
+  useEffect(() => {
+    if (dataReady)
+      window.localStorage.setItem(
+        "pocket-transactions",
+        JSON.stringify(transactions),
+      );
+  }, [transactions, dataReady]);
+  useEffect(() => {
+    if (dataReady)
+      window.localStorage.setItem("pocket-wallets", JSON.stringify(wallets));
+  }, [wallets, dataReady]);
   const currentTheme = themeOptions.find((item) => item.key === theme)!;
   const c = translations[language];
-  const importedTransactions = useMemo(() => transactions.filter((item) => Boolean(item.date)), [transactions]);
+  const importedTransactions = useMemo(
+    () => transactions.filter((item) => Boolean(item.date)),
+    [transactions],
+  );
   const filteredTransactions = useMemo(() => {
     if (monthFilter === "all") return transactions;
-    return transactions.filter((item) => transactionMonth(item.date) === monthFilter);
+    return transactions.filter(
+      (item) => transactionMonth(item.date) === monthFilter,
+    );
   }, [monthFilter, transactions]);
   const filteredImportedTransactions = useMemo(() => {
     if (monthFilter === "all") return importedTransactions;
-    return importedTransactions.filter((item) => transactionMonth(item.date) === monthFilter);
+    return importedTransactions.filter(
+      (item) => transactionMonth(item.date) === monthFilter,
+    );
   }, [importedTransactions, monthFilter]);
   const monthLabel = (month: MonthKey) => {
-    const option = monthOptions.find((item) => item.key === month) ?? monthOptions[0];
+    const option =
+      monthOptions.find((item) => item.key === month) ?? monthOptions[0];
     return language === "id" ? option.id : option.en;
   };
   const spendTotal = useMemo(
@@ -483,8 +506,22 @@ export default function Home() {
                 </p>
               </div>
               <label className="month-button month-control">
-                <select aria-label={language === "id" ? "Filter bulan transaksi" : "Transaction month filter"} value={monthFilter} onChange={(event) => setMonthFilter(event.target.value as MonthKey)}>
-                  {monthOptions.map((option) => <option key={option.key} value={option.key}>{language === "id" ? option.id : option.en}</option>)}
+                <select
+                  aria-label={
+                    language === "id"
+                      ? "Filter bulan transaksi"
+                      : "Transaction month filter"
+                  }
+                  value={monthFilter}
+                  onChange={(event) =>
+                    setMonthFilter(event.target.value as MonthKey)
+                  }
+                >
+                  {monthOptions.map((option) => (
+                    <option key={option.key} value={option.key}>
+                      {language === "id" ? option.id : option.en}
+                    </option>
+                  ))}
                 </select>
                 <ChevronDown size={16} />
               </label>
@@ -523,7 +560,7 @@ export default function Home() {
                 <span>{language === "id" ? "Kategori" : "Category"}</span>
                 <span>{language === "id" ? "Nominal" : "Amount"}</span>
               </div>
-                {filteredTransactions.map((item, index) => (
+              {filteredTransactions.map((item, index) => (
                 <div
                   className="transaction-row"
                   key={`full-${item.title}-${index}`}
@@ -552,27 +589,6 @@ export default function Home() {
                 </div>
               ))}
             </div>
-            <section className="wallet-detail-grid">
-              <article className="content-card mutation-card">
-                <div className="card-heading">
-                  <div>
-                    <h3>{language === "id" ? "Mutasi bank" : "Bank activity"} <span>↔️</span></h3>
-                    <p>{language === "id" ? "Transaksi dari statement yang sudah dibaca." : "Transactions parsed from uploaded statements."}</p>
-                  </div>
-                  <label className="month-button month-control compact-month">
-                    <select aria-label={language === "id" ? "Filter bulan mutasi" : "Mutation month filter"} value={monthFilter} onChange={(event) => setMonthFilter(event.target.value as MonthKey)}>
-                      {monthOptions.map((option) => <option key={option.key} value={option.key}>{language === "id" ? option.id : option.en}</option>)}
-                    </select>
-                    <ChevronDown size={15} />
-                  </label>
-                </div>
-                {filteredImportedTransactions.length === 0 ? <div className="mutation-empty"><span>🧾</span><strong>{uploads.length ? (language === "id" ? `Tidak ada mutasi untuk ${monthLabel(monthFilter)}` : `No activity for ${monthLabel(monthFilter)}`) : (language === "id" ? "Belum ada mutasi bank" : "No bank activity yet")}</strong><small>{language === "id" ? "Upload statement untuk melihat debit dan kredit di sini." : "Upload a statement to see debits and credits here."}</small></div> : <div className="mutation-list">{filteredImportedTransactions.map((item, index) => <div className="mutation-row" key={`mutation-${item.date}-${item.title}-${index}`}><div className={`transaction-icon ${item.color}`}>{item.icon}</div><div className="transaction-info"><strong>{item.title}</strong><small>{item.date} · {item.category}</small></div><strong className={`amount ${item.amount.startsWith("+") ? "positive" : ""}`}>{item.amount}</strong></div>)}</div>}
-              </article>
-              <article className="content-card statement-history-card">
-                <div className="card-heading"><div><h3>{language === "id" ? "Riwayat upload" : "Upload history"} <span>📂</span></h3><p>{language === "id" ? "Semua statement yang pernah dimasukkan." : "Every statement you have added."}</p></div><strong className="history-count">{uploads.length}</strong></div>
-                {uploads.length === 0 ? <div className="mutation-empty"><span>🫶</span><strong>{language === "id" ? "Belum ada file" : "No files yet"}</strong><small>{language === "id" ? "Riwayat akan muncul setelah upload pertama." : "History appears after your first upload."}</small></div> : <div className="statement-history-list">{uploads.map((file) => <div className="statement-history-row" key={file.id}><FileText size={16} /><div><strong>{file.name}</strong><small>{file.bank} · {file.parsedRows} {language === "id" ? "transaksi" : "transactions"} · {file.size}</small></div><span className="status-pill">{file.warningCount ? (language === "id" ? "Review" : "Review") : (language === "id" ? "Selesai" : "Done")}</span></div>)}</div>}
-              </article>
-            </section>
           </section>
         )}
         {active === "My wallets" && (
@@ -683,6 +699,141 @@ export default function Home() {
                 ))
               )}
             </div>
+            <section className="wallet-detail-grid">
+              <article className="content-card mutation-card">
+                <div className="card-heading">
+                  <div>
+                    <h3>
+                      {language === "id" ? "Mutasi bank" : "Bank activity"}{" "}
+                      <span>↔️</span>
+                    </h3>
+                    <p>
+                      {language === "id"
+                        ? "Transaksi dari statement yang sudah dibaca."
+                        : "Transactions parsed from uploaded statements."}
+                    </p>
+                  </div>
+                  <label className="month-button month-control compact-month">
+                    <select
+                      aria-label={
+                        language === "id"
+                          ? "Filter bulan mutasi"
+                          : "Mutation month filter"
+                      }
+                      value={monthFilter}
+                      onChange={(event) =>
+                        setMonthFilter(event.target.value as MonthKey)
+                      }
+                    >
+                      {monthOptions.map((option) => (
+                        <option key={option.key} value={option.key}>
+                          {language === "id" ? option.id : option.en}
+                        </option>
+                      ))}
+                    </select>
+                    <ChevronDown size={15} />
+                  </label>
+                </div>
+                {filteredImportedTransactions.length === 0 ? (
+                  <div className="mutation-empty">
+                    <span>🧾</span>
+                    <strong>
+                      {uploads.length
+                        ? language === "id"
+                          ? `Tidak ada mutasi untuk ${monthLabel(monthFilter)}`
+                          : `No activity for ${monthLabel(monthFilter)}`
+                        : language === "id"
+                          ? "Belum ada mutasi bank"
+                          : "No bank activity yet"}
+                    </strong>
+                    <small>
+                      {language === "id"
+                        ? "Upload statement untuk melihat debit dan kredit di sini."
+                        : "Upload a statement to see debits and credits here."}
+                    </small>
+                  </div>
+                ) : (
+                  <div className="mutation-list">
+                    {filteredImportedTransactions.map((item, index) => (
+                      <div
+                        className="mutation-row"
+                        key={`wallet-mutation-${item.date}-${item.title}-${index}`}
+                      >
+                        <div className={`transaction-icon ${item.color}`}>
+                          {item.icon}
+                        </div>
+                        <div className="transaction-info">
+                          <strong>{item.title}</strong>
+                          <small>
+                            {item.date} · {item.category}
+                          </small>
+                        </div>
+                        <strong
+                          className={`amount ${item.amount.startsWith("+") ? "positive" : ""}`}
+                        >
+                          {item.amount}
+                        </strong>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </article>
+              <article className="content-card statement-history-card">
+                <div className="card-heading">
+                  <div>
+                    <h3>
+                      {language === "id" ? "Riwayat upload" : "Upload history"}{" "}
+                      <span>📂</span>
+                    </h3>
+                    <p>
+                      {language === "id"
+                        ? "Semua statement yang pernah dimasukkan."
+                        : "Every statement you have added."}
+                    </p>
+                  </div>
+                  <strong className="history-count">{uploads.length}</strong>
+                </div>
+                {uploads.length === 0 ? (
+                  <div className="mutation-empty">
+                    <span>🫶</span>
+                    <strong>
+                      {language === "id" ? "Belum ada file" : "No files yet"}
+                    </strong>
+                    <small>
+                      {language === "id"
+                        ? "Riwayat akan muncul setelah upload pertama."
+                        : "History appears after your first upload."}
+                    </small>
+                  </div>
+                ) : (
+                  <div className="statement-history-list">
+                    {uploads.map((file) => (
+                      <div
+                        className="statement-history-row"
+                        key={`wallet-history-${file.id}`}
+                      >
+                        <FileText size={16} />
+                        <div>
+                          <strong>{file.name}</strong>
+                          <small>
+                            {file.bank} · {file.parsedRows}{" "}
+                            {language === "id" ? "transaksi" : "transactions"} ·{" "}
+                            {file.size}
+                          </small>
+                        </div>
+                        <span className="status-pill">
+                          {file.warningCount
+                            ? "Review"
+                            : language === "id"
+                              ? "Selesai"
+                              : "Done"}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </article>
+            </section>
           </section>
         )}
         <div className="main-grid">
@@ -695,8 +846,22 @@ export default function Home() {
                 <p>{c.overviewSub}</p>
               </div>
               <label className="month-button month-control">
-                <select aria-label={language === "id" ? "Filter bulan ringkasan" : "Overview month filter"} value={monthFilter} onChange={(event) => setMonthFilter(event.target.value as MonthKey)}>
-                  {monthOptions.map((option) => <option key={option.key} value={option.key}>{language === "id" ? option.id : option.en}</option>)}
+                <select
+                  aria-label={
+                    language === "id"
+                      ? "Filter bulan ringkasan"
+                      : "Overview month filter"
+                  }
+                  value={monthFilter}
+                  onChange={(event) =>
+                    setMonthFilter(event.target.value as MonthKey)
+                  }
+                >
+                  {monthOptions.map((option) => (
+                    <option key={option.key} value={option.key}>
+                      {language === "id" ? option.id : option.en}
+                    </option>
+                  ))}
                 </select>
                 <ChevronDown size={16} />
               </label>
@@ -708,7 +873,12 @@ export default function Home() {
                 </div>
                 <div className="stat-value">
                   {wallets.length
-                    ? rupiah(wallets.reduce((total, wallet) => total + wallet.endingBalance, 0))
+                    ? rupiah(
+                        wallets.reduce(
+                          (total, wallet) => total + wallet.endingBalance,
+                          0,
+                        ),
+                      )
                     : "—"}
                 </div>
                 <div className="stat-change">
@@ -821,15 +991,29 @@ export default function Home() {
                   <p>{c.statementsSub}</p>
                 </div>
               </div>
-              <div
-                className="bank-options"
-                aria-label="Pilih bank"
-              >
+              <div className="bank-options" aria-label="Pilih bank">
                 <p>{c.which}</p>
                 <div className="bank-select-card">
-                  <span className="bank-logo">{bank === "DBS" ? "dbs" : bank === "BCA" || bank === "Kartu Kredit BCA" || bank === "Blu by BCA Digital" ? "bca" : "bank"}</span>
-                  <select className="bank-select" aria-label="Pilih bank" value={bank} onChange={(event) => setBank(event.target.value as BankKey)}>
-                  {BANK_CATALOG.map((item) => <option key={item} value={item}>{item}</option>)}
+                  <span className="bank-logo">
+                    {bank === "DBS"
+                      ? "dbs"
+                      : bank === "BCA" ||
+                          bank === "Kartu Kredit BCA" ||
+                          bank === "Blu by BCA Digital"
+                        ? "bca"
+                        : "bank"}
+                  </span>
+                  <select
+                    className="bank-select"
+                    aria-label="Pilih bank"
+                    value={bank}
+                    onChange={(event) => setBank(event.target.value as BankKey)}
+                  >
+                    {BANK_CATALOG.map((item) => (
+                      <option key={item} value={item}>
+                        {item}
+                      </option>
+                    ))}
                   </select>
                   <ChevronDown size={16} />
                 </div>
@@ -870,7 +1054,8 @@ export default function Home() {
                       <div>
                         <strong>{file.name}</strong>
                         <small>
-                          {file.bank} · {file.size} · {file.parsedRows} transaksi
+                          {file.bank} · {file.size} · {file.parsedRows}{" "}
+                          transaksi
                           {file.warningCount ? " · review" : ""}
                         </small>
                       </div>
@@ -879,7 +1064,14 @@ export default function Home() {
                       </span>
                     </div>
                   ))}
-                  {lastImportSummary && <div className="import-review"><strong>{lastImportSummary}</strong>{parseWarnings.length > 0 && <small>{parseWarnings[0]}</small>}</div>}
+                  {lastImportSummary && (
+                    <div className="import-review">
+                      <strong>{lastImportSummary}</strong>
+                      {parseWarnings.length > 0 && (
+                        <small>{parseWarnings[0]}</small>
+                      )}
+                    </div>
+                  )}
                 </div>
               )}
             </section>
