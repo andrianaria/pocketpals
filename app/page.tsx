@@ -324,6 +324,34 @@ export default function Home() {
     setToast("Transaksi dihapus");
     window.setTimeout(() => setToast(""), 2200);
   };
+  const updateTransactionInline = (
+    id: string,
+    changes: Partial<ParsedTransaction>,
+  ) => {
+    setTransactions((items) =>
+      items.map((item) => {
+        if (item.id !== id) return item;
+        const next = { ...item, ...changes };
+        return {
+          ...next,
+          meta: `${next.date || "Tanggal belum terbaca"} · ${next.category}`,
+        };
+      }),
+    );
+  };
+  const updateTransactionCategory = (
+    transaction: ParsedTransaction,
+    category: string,
+  ) => {
+    if (!transaction.id) return;
+    const selected =
+      categoryOptions.find(([name]) => name === category) ?? categoryOptions[6];
+    updateTransactionInline(transaction.id, {
+      category: selected[0],
+      color: selected[1],
+      icon: selected[2],
+    });
+  };
   const processFile = async (file: File) => {
     const extension = file.name.toLowerCase().split(".").pop();
     if (!extension || !["csv", "xls", "xlsx", "pdf"].includes(extension)) {
@@ -612,12 +640,18 @@ export default function Home() {
               </div>
             </div>
             <div className="full-list content-card">
+              <datalist id="category-options">
+                {categoryOptions.map(([name]) => (
+                  <option key={name} value={name} />
+                ))}
+              </datalist>
               <div className="list-header">
-                <strong>
+                <strong className="list-header-activity">
                   {language === "id" ? "Aktivitas terbaru" : "Latest activity"}
                 </strong>
-                <span>{language === "id" ? "Kategori" : "Category"}</span>
+                <span>{language === "id" ? "Kategori & remarks" : "Category & remarks"}</span>
                 <span>{language === "id" ? "Nominal" : "Amount"}</span>
+                <span>{language === "id" ? "Aksi" : "Actions"}</span>
               </div>
               {filteredTransactions.map((item, index) => (
                   <div
@@ -632,9 +666,37 @@ export default function Home() {
                     <small>{item.meta}</small>
                     {item.note && <small className="transaction-note">📝 {item.note}</small>}
                   </div>
-                  <span className="list-category">
-                    {item.category}
-                  </span>
+                  <div className="transaction-inline-fields">
+                    <label className="sr-only" htmlFor={`category-${item.id}`}>
+                      Kategori
+                    </label>
+                    <input
+                      id={`category-${item.id}`}
+                      className="inline-category-input"
+                      list="category-options"
+                      value={item.category}
+                      onChange={(event) =>
+                        updateTransactionCategory(item, event.target.value)
+                      }
+                      aria-label={`Kategori ${item.title}`}
+                    />
+                    <label className="sr-only" htmlFor={`note-${item.id}`}>
+                      Remarks
+                    </label>
+                    <input
+                      id={`note-${item.id}`}
+                      className="inline-note-input"
+                      value={item.note ?? ""}
+                      onChange={(event) =>
+                        item.id &&
+                        updateTransactionInline(item.id, {
+                          note: event.target.value,
+                        })
+                      }
+                      placeholder="Remarks…"
+                      aria-label={`Remarks ${item.title}`}
+                    />
+                  </div>
                   <strong
                     className={`amount ${item.amount.startsWith("+") ? "positive" : ""}`}
                   >
