@@ -244,6 +244,99 @@ export function parsePdfText(
         source,
       });
   }
+  if (bank === "BCA" && /REKENING TAHAPAN/i.test(normalizedText)) {
+    const statementPeriod = normalizedText.match(
+      /PERIODE\s*:\s*([A-Z]+\s+\d{4})/i,
+    )?.[1];
+    const year = statementPeriod?.match(/\d{4}/)?.[0] ?? "2026";
+    const bcaMoney = (value: string) =>
+      Math.abs(Number(value.replace(/,/g, ""))) || 0;
+    const accountNumber = normalizedText.match(
+      /NO\.\s*REKENING\s*:\s*([0-9]+)/i,
+    )?.[1];
+    const accountName = normalizedText.match(
+      /REKENING TAHAPAN\s+KCU\s+[^ ]+\s+(.+?)\s+NO\.\s*REKENING/i,
+    )?.[1]?.trim();
+    const endingBalance = normalizedText.match(
+      /SALDO AKHIR\s*:\s*([0-9][0-9.,]*)/i,
+    )?.[1];
+    const bcaWallets: ParsedWallet[] = endingBalance
+      ? [
+          {
+            bank,
+            accountName: accountName || "Rekening Tahapan BCA",
+            accountNumber,
+            currency: "IDR",
+            endingBalance: bcaMoney(endingBalance),
+            source,
+          },
+        ]
+      : [];
+    const anchorPattern =
+      /(?<!\d)(\d{2}\/\d{2})\s+(?=(?:KR OTOMATIS|TRSF E-BANKING|BI-FAST|TRANSAKSI DEBIT|KARTU KREDIT|KARTU DEBIT|SETORAN VIA CDM|TARIKAN ATM|PEMBAYARAN PINJ\.|BIAYA ADM))/g;
+    const anchors = Array.from(normalizedText.matchAll(anchorPattern));
+    const bcaTransactions: ParsedTransaction[] = [];
+    for (let index = 0; index < anchors.length && bcaTransactions.length < 500; index += 1) {
+      const anchor = anchors[index];
+      const nextStart = anchors[index + 1]?.index ?? normalizedText.length;
+      const chunk = normalizedText.slice(anchor.index, nextStart).trim();
+      const date = anchor[1];
+      const body = chunk.slice(date.length).trim();
+      const amountTokens = body.match(/[0-9][0-9.,]*\.[0-9]{2}/g) ?? [];
+      const amountToken = amountTokens.find((token) => bcaMoney(token) > 0);
+      if (!amountToken) continue;
+      const amountIndex = body.indexOf(amountToken);
+      const amount = bcaMoney(amountToken);
+      if (!amount) continue;
+      const beforeAmount = body.slice(0, amountIndex).trim();
+      const afterAmount = body.slice(amountIndex + amountToken.length);
+      const afterTransaction = afterAmount.split(
+        /(?:SALDO AWAL|BERSAMBUNG KE HALAMAN BERIKUT|REKENING TAHAPAN)/i,
+      )[0];
+      const cleanedAfter = afterTransaction
+        .replace(/\b(?:DB|CR)\b/g, " ")
+        .replace(/(?:TANGGAL|QR|DDR|TGH|ADM)\s*:?\s*[0-9.,/ -]*/gi, " ")
+        .replace(/[0-9][0-9.,]*/g, " ")
+        .replace(/@[^ ]+/g, " ")
+        .replace(/\s+/g, " ")
+        .trim();
+      const descriptor = cleanedAfter || beforeAmount;
+      const title = descriptor
+        .replace(/\b(?:DB|CR)\b/g, " ")
+        .replace(/\s+/g, " ")
+        .trim()
+        .replace(/^(?:-\s*)+|(?:\s*-)+$/g, "") || "Transaksi BCA";
+      const isCredit =
+        /\bCR\b/i.test(beforeAmount) ||
+        /KR OTOMATIS|BI-FAST|SETORAN VIA CDM/i.test(beforeAmount);
+      const [category, color, icon] = classify(`${beforeAmount} ${title}`);
+      bcaTransactions.push({
+        icon,
+        title,
+        meta: `${date}/${year} · ${category}`,
+        amount: `${isCredit ? "+" : "−"} ${formatIdr(amount)}`,
+        amountValue: amount,
+        direction: isCredit ? "credit" : "debit",
+        color,
+        category,
+        date: `${date}/${year}`,
+      });
+    }
+    return {
+      bank,
+      transactions: bcaTransactions,
+      wallets: bcaWallets,
+      warnings: bcaTransactions.length
+        ? []
+        : ["Transaksi BCA belum terdeteksi dari statement ini."],
+      rowsFound: bcaTransactions.length,
+      failedRows: bcaTransactions.length ? 0 : 1,
+      failureDetails: bcaTransactions.length
+        ? []
+        : ["Format PDF BCA belum cocok dengan pola transaksi yang dikenali."],
+      statementPeriod,
+    };
+  }
   const transactions: ParsedTransaction[] = [];
   const linePattern =
     /(\d{2}\/\d{2}\/\d{4})\s+(?:\d{2}\/\d{2}\/\d{4}\s+)?(.+?)\s+([0-9][0-9.,]+)\s+Cr/g;
