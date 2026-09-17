@@ -30,6 +30,7 @@ import {
 type ThemeKey = "sakura" | "matcha" | "blueberry" | "peach";
 type LanguageKey = "id" | "en";
 type BankKey = (typeof BANK_CATALOG)[number];
+type MonthKey = "all" | "2026-09" | "2026-08" | "2026-07" | "2026-06";
 type UploadItem = {
   id: number;
   name: string;
@@ -178,12 +179,21 @@ const rupiah = (amount: number) =>
     currency: "IDR",
     maximumFractionDigits: 0,
   }).format(amount);
+const monthOptions: { key: MonthKey; id: string; en: string }[] = [
+  { key: "all", id: "Semua bulan", en: "All months" },
+  { key: "2026-09", id: "September 2026", en: "September 2026" },
+  { key: "2026-08", id: "Agustus 2026", en: "August 2026" },
+  { key: "2026-07", id: "Juli 2026", en: "July 2026" },
+  { key: "2026-06", id: "Juni 2026", en: "June 2026" },
+];
+const transactionMonth = (date?: string) => date && date.length >= 10 ? `${date.slice(6, 10)}-${date.slice(3, 5)}` : "";
 
 export default function Home() {
   const [theme, setTheme] = useState<ThemeKey>("sakura");
   const [language, setLanguage] = useState<LanguageKey>("id");
   const [active, setActive] = useState("Overview");
   const [bank, setBank] = useState<BankKey>("DBS");
+  const [monthFilter, setMonthFilter] = useState<MonthKey>("all");
   const [uploads, setUploads] = useState<UploadItem[]>([]);
   const [transactions, setTransactions] =
     useState<ParsedTransaction[]>(initialTransactions);
@@ -229,6 +239,19 @@ export default function Home() {
   useEffect(() => { if (dataReady) window.localStorage.setItem("pocket-wallets", JSON.stringify(wallets)); }, [wallets, dataReady]);
   const currentTheme = themeOptions.find((item) => item.key === theme)!;
   const c = translations[language];
+  const importedTransactions = useMemo(() => transactions.filter((item) => Boolean(item.date)), [transactions]);
+  const filteredTransactions = useMemo(() => {
+    if (monthFilter === "all") return transactions;
+    return transactions.filter((item) => transactionMonth(item.date) === monthFilter);
+  }, [monthFilter, transactions]);
+  const filteredImportedTransactions = useMemo(() => {
+    if (monthFilter === "all") return importedTransactions;
+    return importedTransactions.filter((item) => transactionMonth(item.date) === monthFilter);
+  }, [importedTransactions, monthFilter]);
+  const monthLabel = (month: MonthKey) => {
+    const option = monthOptions.find((item) => item.key === month) ?? monthOptions[0];
+    return language === "id" ? option.id : option.en;
+  };
   const spendTotal = useMemo(
     () => (uploads.length ? 5820000 : 4820000),
     [uploads.length],
@@ -459,16 +482,19 @@ export default function Home() {
                     : "All transactions from uploaded statements."}
                 </p>
               </div>
-              <button className="month-button">
-                {c.month} <ChevronDown size={16} />
-              </button>
+              <label className="month-button month-control">
+                <select aria-label={language === "id" ? "Filter bulan transaksi" : "Transaction month filter"} value={monthFilter} onChange={(event) => setMonthFilter(event.target.value as MonthKey)}>
+                  {monthOptions.map((option) => <option key={option.key} value={option.key}>{language === "id" ? option.id : option.en}</option>)}
+                </select>
+                <ChevronDown size={16} />
+              </label>
             </div>
             <div className="transaction-summary">
               <div>
                 <span>
                   {language === "id" ? "Jumlah transaksi" : "Transactions"}
                 </span>
-                <strong>{transactions.length}</strong>
+                <strong>{filteredTransactions.length}</strong>
               </div>
               <div>
                 <span>
@@ -497,7 +523,7 @@ export default function Home() {
                 <span>{language === "id" ? "Kategori" : "Category"}</span>
                 <span>{language === "id" ? "Nominal" : "Amount"}</span>
               </div>
-              {transactions.map((item, index) => (
+                {filteredTransactions.map((item, index) => (
                 <div
                   className="transaction-row"
                   key={`full-${item.title}-${index}`}
@@ -526,6 +552,27 @@ export default function Home() {
                 </div>
               ))}
             </div>
+            <section className="wallet-detail-grid">
+              <article className="content-card mutation-card">
+                <div className="card-heading">
+                  <div>
+                    <h3>{language === "id" ? "Mutasi bank" : "Bank activity"} <span>↔️</span></h3>
+                    <p>{language === "id" ? "Transaksi dari statement yang sudah dibaca." : "Transactions parsed from uploaded statements."}</p>
+                  </div>
+                  <label className="month-button month-control compact-month">
+                    <select aria-label={language === "id" ? "Filter bulan mutasi" : "Mutation month filter"} value={monthFilter} onChange={(event) => setMonthFilter(event.target.value as MonthKey)}>
+                      {monthOptions.map((option) => <option key={option.key} value={option.key}>{language === "id" ? option.id : option.en}</option>)}
+                    </select>
+                    <ChevronDown size={15} />
+                  </label>
+                </div>
+                {filteredImportedTransactions.length === 0 ? <div className="mutation-empty"><span>🧾</span><strong>{uploads.length ? (language === "id" ? `Tidak ada mutasi untuk ${monthLabel(monthFilter)}` : `No activity for ${monthLabel(monthFilter)}`) : (language === "id" ? "Belum ada mutasi bank" : "No bank activity yet")}</strong><small>{language === "id" ? "Upload statement untuk melihat debit dan kredit di sini." : "Upload a statement to see debits and credits here."}</small></div> : <div className="mutation-list">{filteredImportedTransactions.map((item, index) => <div className="mutation-row" key={`mutation-${item.date}-${item.title}-${index}`}><div className={`transaction-icon ${item.color}`}>{item.icon}</div><div className="transaction-info"><strong>{item.title}</strong><small>{item.date} · {item.category}</small></div><strong className={`amount ${item.amount.startsWith("+") ? "positive" : ""}`}>{item.amount}</strong></div>)}</div>}
+              </article>
+              <article className="content-card statement-history-card">
+                <div className="card-heading"><div><h3>{language === "id" ? "Riwayat upload" : "Upload history"} <span>📂</span></h3><p>{language === "id" ? "Semua statement yang pernah dimasukkan." : "Every statement you have added."}</p></div><strong className="history-count">{uploads.length}</strong></div>
+                {uploads.length === 0 ? <div className="mutation-empty"><span>🫶</span><strong>{language === "id" ? "Belum ada file" : "No files yet"}</strong><small>{language === "id" ? "Riwayat akan muncul setelah upload pertama." : "History appears after your first upload."}</small></div> : <div className="statement-history-list">{uploads.map((file) => <div className="statement-history-row" key={file.id}><FileText size={16} /><div><strong>{file.name}</strong><small>{file.bank} · {file.parsedRows} {language === "id" ? "transaksi" : "transactions"} · {file.size}</small></div><span className="status-pill">{file.warningCount ? (language === "id" ? "Review" : "Review") : (language === "id" ? "Selesai" : "Done")}</span></div>)}</div>}
+              </article>
+            </section>
           </section>
         )}
         {active === "My wallets" && (
@@ -647,9 +694,12 @@ export default function Home() {
                 </h2>
                 <p>{c.overviewSub}</p>
               </div>
-              <button className="month-button">
-                {c.month} <ChevronDown size={16} />
-              </button>
+              <label className="month-button month-control">
+                <select aria-label={language === "id" ? "Filter bulan ringkasan" : "Overview month filter"} value={monthFilter} onChange={(event) => setMonthFilter(event.target.value as MonthKey)}>
+                  {monthOptions.map((option) => <option key={option.key} value={option.key}>{language === "id" ? option.id : option.en}</option>)}
+                </select>
+                <ChevronDown size={16} />
+              </label>
             </div>
             <section className="stats-grid">
               <article className="stat-card balance-card">
@@ -773,28 +823,16 @@ export default function Home() {
               </div>
               <div
                 className="bank-options"
-                role="radiogroup"
                 aria-label="Pilih bank"
               >
                 <p>{c.which}</p>
-                {(["DBS", "BCA", "Kartu Kredit BCA"] as BankKey[]).map(
-                  (item) => (
-                    <button
-                      key={item}
-                      className={`bank-option ${bank === item ? "active" : ""}`}
-                      onClick={() => setBank(item)}
-                    >
-                      <span className="bank-logo">
-                        {item === "DBS" ? "dbs" : "bca"}
-                      </span>
-                      <span>{item}</span>
-                      {bank === item && <Check size={16} />}
-                    </button>
-                  ),
-                )}
-                <select className="bank-select" aria-label="Pilih bank lain" value={bank} onChange={(event) => setBank(event.target.value as BankKey)}>
+                <div className="bank-select-card">
+                  <span className="bank-logo">{bank === "DBS" ? "dbs" : bank === "BCA" || bank === "Kartu Kredit BCA" || bank === "Blu by BCA Digital" ? "bca" : "bank"}</span>
+                  <select className="bank-select" aria-label="Pilih bank" value={bank} onChange={(event) => setBank(event.target.value as BankKey)}>
                   {BANK_CATALOG.map((item) => <option key={item} value={item}>{item}</option>)}
-                </select>
+                  </select>
+                  <ChevronDown size={16} />
+                </div>
               </div>
               <input
                 ref={fileRef}
