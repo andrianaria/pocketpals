@@ -27,6 +27,9 @@ import {
   type ParsedWallet,
 } from "@/lib/statement-parser";
 import * as pdfjs from "pdfjs-dist/legacy/build/pdf.mjs";
+import pdfWorker from "pdfjs-dist/legacy/build/pdf.worker.min.mjs?url";
+
+pdfjs.GlobalWorkerOptions.workerSrc = pdfWorker;
 
 type ThemeKey = "sakura" | "matcha" | "blueberry" | "peach";
 type LanguageKey = "id" | "en";
@@ -316,7 +319,8 @@ export default function Home() {
       } else {
         const pdfDocument = await pdfjs.getDocument({
           data: new Uint8Array(await file.arrayBuffer()),
-          disableWorker: true,
+          useWorkerFetch: false,
+          isEvalSupported: false,
         }).promise;
         const pages: string[] = [];
         for (
@@ -366,8 +370,9 @@ export default function Home() {
       );
     } catch (error) {
       console.error(error);
+      const errorMessage = error instanceof Error ? error.message : String(error);
       setParseWarnings([
-        "File berhasil dipilih tetapi belum bisa dipetakan otomatis. Coba format statement lain atau review kolomnya.",
+        `Parser gagal membaca file: ${errorMessage || "format belum dikenali"}`,
       ]);
       setLastImportSummary("0 berhasil · 1 gagal · perlu review");
       setImportReport({ fileName: file.name, bank, progress: 100, status: "error", totalRows: 1, successRows: 0, failedRows: 1, failures: ["File tidak bisa dibaca di browser atau formatnya belum dikenali."] });
