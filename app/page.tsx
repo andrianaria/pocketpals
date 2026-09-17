@@ -26,6 +26,7 @@ import {
   type ParsedTransaction,
   type ParsedWallet,
 } from "@/lib/statement-parser";
+import * as pdfjs from "pdfjs-dist/legacy/build/pdf.mjs";
 
 type ThemeKey = "sakura" | "matcha" | "blueberry" | "peach";
 type LanguageKey = "id" | "en";
@@ -310,7 +311,6 @@ export default function Home() {
         setImportReport((report) => report && { ...report, progress: 35, status: "parsing" });
         result = parseWorkbook(await file.arrayBuffer(), bank, file.name);
       } else {
-        const pdfjs = await import("pdfjs-dist/legacy/build/pdf.mjs");
         const pdfDocument = await pdfjs.getDocument({
           data: new Uint8Array(await file.arrayBuffer()),
           disableWorker: true,
@@ -850,11 +850,8 @@ export default function Home() {
         )}
         {active === "Upload statement" && (
           <section className="section-view upload-page">
-            <div className="section-toolbar">
-              <div>
-                <h2>{c.uploadStatement} <span>🛸</span></h2>
-                <p>{language === "id" ? "Upload, rapikan, dan cek hasil import statement-mu." : "Upload, tidy, and review your imported statements."}</p>
-              </div>
+            <div className="section-toolbar upload-page-intro">
+              <p>{language === "id" ? "Upload, rapikan, dan cek hasil import statement-mu." : "Upload, tidy, and review your imported statements."}</p>
               <span className="upload-page-count">{uploads.length} {language === "id" ? "file tersimpan" : "saved files"}</span>
             </div>
             <div className="upload-page-grid">
