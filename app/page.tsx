@@ -207,7 +207,10 @@ export default function Home() {
         "pocket-transactions",
       );
       const savedWallets = window.localStorage.getItem("pocket-wallets");
-      if (savedUploads) setUploads(JSON.parse(savedUploads));
+      if (savedUploads) {
+        const restoredUploads = JSON.parse(savedUploads) as UploadItem[];
+        setUploads(Array.from(new Map(restoredUploads.map((item) => [`${item.bank}:${item.name}`, item])).values()));
+      }
       if (savedTransactions) {
         const restored = JSON.parse(savedTransactions) as ParsedTransaction[];
         setTransactions(
@@ -354,7 +357,7 @@ export default function Home() {
           parsedRows: result.rowsFound,
           warningCount: result.warnings.length,
         },
-        ...items,
+        ...items.filter((item) => !(item.name === file.name && item.bank === parsedBank)),
       ]);
       setToast(
         result.warnings.length
@@ -379,7 +382,7 @@ export default function Home() {
           parsedRows: 0,
           warningCount: 1,
         },
-        ...items,
+        ...items.filter((item) => !(item.name === file.name && item.bank === bank)),
       ]);
       setToast("File tersimpan, tapi parsing perlu review");
     }
