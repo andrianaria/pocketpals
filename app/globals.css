@@ -276,6 +276,7 @@ select {
   color: var(--primary);
 }
 .profile {
+  position: relative;
   border-top: 1px solid var(--line);
   padding: 20px 5px 0;
   display: flex;
@@ -293,9 +294,22 @@ select {
   font-size: 11px;
 }
 .profile svg {
-  margin-left: auto;
   color: var(--muted);
 }
+.profile-trigger { min-width: 0; flex: 1; padding: 0; border: 0; background: transparent; text-align: left; color: var(--ink); cursor: pointer; }
+.profile-trigger strong, .profile-trigger small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.profile-more { display: grid; place-items: center; width: 28px; height: 28px; padding: 0; border: 0; border-radius: 8px; background: transparent; cursor: pointer; }
+.profile-more svg { transition: transform .2s ease; }
+.profile-open .profile-more svg { transform: rotate(180deg); }
+.profile-menu { position: absolute; z-index: 8; right: 0; bottom: calc(100% + 10px); width: 235px; padding: 10px; border: 1px solid var(--line); border-radius: 15px; background: #fff; box-shadow: 0 16px 35px rgba(52, 43, 55, .16); }
+.profile-menu-heading { display: flex; align-items: center; gap: 9px; padding: 5px 7px 10px; border-bottom: 1px solid var(--line); }
+.profile-menu-heading strong, .profile-menu-heading small { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.profile-menu-heading strong { font-size: 12px; }
+.profile-menu-heading small { max-width: 170px; margin-top: 3px; color: var(--muted); font-size: 10px; }
+.profile-menu-avatar { display: grid; place-items: center; flex: 0 0 auto; width: 30px; height: 30px; border-radius: 50%; background: #f8d6da; color: #ae6475; font-size: 12px; font-weight: 800; }
+.profile-menu > button { display: flex; align-items: center; gap: 9px; width: 100%; margin-top: 4px; padding: 9px 8px; border: 0; border-radius: 9px; background: transparent; color: var(--ink); text-align: left; font: inherit; font-size: 12px; cursor: pointer; }
+.profile-menu > button:hover { background: var(--soft); }
+.profile-menu .profile-logout { color: #c95e72; }
 .avatar {
   width: 33px;
   height: 33px;

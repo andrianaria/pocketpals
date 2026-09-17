@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { UserButton } from "@clerk/nextjs";
+import { useClerk, useUser } from "@clerk/nextjs";
 import {
   Upload,
   WalletCards,
@@ -183,6 +183,8 @@ const transactionMonth = (date?: string) =>
   date && date.length >= 10 ? `${date.slice(6, 10)}-${date.slice(3, 5)}` : "";
 
 export default function Home() {
+  const { user } = useUser();
+  const { openUserProfile, signOut } = useClerk();
   const [theme, setTheme] = useState<ThemeKey>("sakura");
   const [language, setLanguage] = useState<LanguageKey>("id");
   const [active, setActive] = useState("Overview");
@@ -199,6 +201,7 @@ export default function Home() {
   const [toast, setToast] = useState("");
   const [importReport, setImportReport] = useState<ImportReport | null>(null);
   const [editingTransaction, setEditingTransaction] = useState<ParsedTransaction | null>(null);
+  const [profileMenuOpen, setProfileMenuOpen] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
   useEffect(() => {
     const savedTheme = window.localStorage.getItem(
@@ -260,6 +263,8 @@ export default function Home() {
   }, [wallets, dataReady]);
   const currentTheme = themeOptions.find((item) => item.key === theme)!;
   const c = translations[language];
+  const profileName = user?.fullName || user?.firstName || "Ria Andriana";
+  const profileEmail = user?.primaryEmailAddress?.emailAddress || "Ruang pribadi";
   const importedTransactions = useMemo(
     () => transactions.filter((item) => Boolean(item.date)),
     [transactions],
@@ -530,20 +535,61 @@ export default function Home() {
               add up! <span>🐾</span>
             </p>
           </div>
-          <div className="profile">
+          <div className={`profile ${profileMenuOpen ? "profile-open" : ""}`}>
             <div className="avatar">
               <img
                 src={avatarForTheme[theme]}
                 alt={`${currentTheme.label} avatar`}
               />
             </div>
-            <div>
-              <strong>Ria Andriana</strong>
-              <small>{c.personal}</small>
-            </div>
-            <UserButton
-              appearance={{ elements: { avatarBox: "clerk-avatar" } }}
-            />
+            <button
+              type="button"
+              className="profile-trigger"
+              aria-expanded={profileMenuOpen}
+              aria-label="Buka menu profil"
+              onClick={() => setProfileMenuOpen((open) => !open)}
+            >
+              <strong>{profileName}</strong>
+              <small>{profileEmail}</small>
+            </button>
+            <button
+              type="button"
+              className="profile-more"
+              aria-label="Buka menu profil"
+              aria-expanded={profileMenuOpen}
+              onClick={() => setProfileMenuOpen((open) => !open)}
+            >
+              <ChevronDown size={16} />
+            </button>
+            {profileMenuOpen && (
+              <div className="profile-menu">
+                <div className="profile-menu-heading">
+                  <span className="profile-menu-avatar">{profileName.slice(0, 1).toUpperCase()}</span>
+                  <div>
+                    <strong>{profileName}</strong>
+                    <small>{profileEmail}</small>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setProfileMenuOpen(false);
+                    openUserProfile();
+                  }}
+                >
+                  <span>👤</span>
+                  {language === "id" ? "Profil saya" : "My profile"}
+                </button>
+                <button
+                  type="button"
+                  className="profile-logout"
+                  onClick={() => signOut({ redirectUrl: "/sign-in" })}
+                >
+                  <span>↪</span>
+                  {language === "id" ? "Keluar" : "Log out"}
+                </button>
+              </div>
+            )}
           </div>
         </div>
       </aside>
