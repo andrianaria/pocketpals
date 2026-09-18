@@ -80,6 +80,10 @@
 .statement-history-list {
   margin-top: 14px;
 }
+.mutation-account-group + .mutation-account-group { margin-top: 15px; padding-top: 10px; border-top: 1px solid var(--line); }
+.mutation-account-heading { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; padding: 5px 0 3px; color: var(--ink); }
+.mutation-account-heading strong { font-size: 12px; }
+.mutation-account-heading small { color: var(--muted); font-size: 10px; }
 .mutation-row,
 .statement-history-row {
   display: flex;

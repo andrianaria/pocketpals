@@ -12,6 +12,9 @@ export type ParsedTransaction = {
   category: string;
   note?: string;
   date?: string;
+  accountName?: string;
+  accountNumber?: string;
+  currency?: string;
 };
 export type ParsedWallet = {
   bank: string;
@@ -231,10 +234,29 @@ export function parsePdfText(
     /Statement Period\s*\/\s*Periode Rekening Koran\s+(.+?\d{4})/i,
   )?.[1];
   const wallets: ParsedWallet[] = [];
+  let match: RegExpExecArray | null;
+  const relationshipPattern =
+    /(Tabungan Maxi|Digibank Savings)\s+([0-9]+)\s+([A-Z]{3})\s+Active\s+([0-9][0-9.,]*)\s+[0-9][0-9.,]*/gi;
+  while (
+    (match = relationshipPattern.exec(normalizedText)) &&
+    wallets.length < 20
+  ) {
+    wallets.push({
+      bank,
+      accountName: match[1],
+      accountNumber: match[2],
+      currency: match[3],
+      endingBalance: money(match[4]),
+      source,
+    });
+  }
   const walletPattern =
     /Ending Balance\s+([0-9][0-9.,]*)\s*(?:Cr|DR)?\s+(.+?)\s+Account Number:\s*([0-9]+)\s+Currency:\s*([A-Z]{3})/gi;
-  let match: RegExpExecArray | null;
-  while ((match = walletPattern.exec(normalizedText)) && wallets.length < 20) {
+  while (
+    !wallets.length &&
+    (match = walletPattern.exec(normalizedText)) &&
+    wallets.length < 20
+  ) {
     const amount = money(match[1]);
     if (amount > 0)
       wallets.push({
@@ -246,6 +268,16 @@ export function parsePdfText(
         source,
       });
   }
+  const accountSections = Array.from(
+    normalizedText.matchAll(
+      /Summary and Transaction History Savings\s+(Tabungan Maxi|Digibank Savings)\s+Account Number:\s*([0-9]+)\s+Currency:\s*([A-Z]{3})\s+Status:\s*Active/gi,
+    ),
+  ).map((section) => ({
+    index: section.index ?? 0,
+    accountName: section[1],
+    accountNumber: section[2],
+    currency: section[3],
+  }));
   if (!wallets.length) {
     const endingPattern = /Ending Balance\s+([0-9][0-9.,]*)\s*(?:Cr|DR)?/gi;
     while ((match = endingPattern.exec(normalizedText)) && wallets.length < 20) {
@@ -365,6 +397,9 @@ export function parsePdfText(
       : body;
     const amount = money(amountToken);
     const [category, color, icon] = classify(description);
+    const account = [...accountSections]
+      .reverse()
+      .find((section) => section.index <= (match?.index ?? 0));
     if (amount)
       transactions.push({
         icon,
@@ -376,6 +411,9 @@ export function parsePdfText(
         color,
         category,
         date: match[1],
+        accountName: account?.accountName,
+        accountNumber: account?.accountNumber,
+        currency: account?.currency,
       });
   }
   return {

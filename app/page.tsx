@@ -315,6 +315,27 @@ export default function Home() {
     const importedIds = new Set(importedTransactions.map((item) => item.id));
     return filteredTransactions.filter((item) => importedIds.has(item.id));
   }, [filteredTransactions, importedTransactions]);
+  const mutationGroups = useMemo(() => {
+    const groups = new Map<
+      string,
+      { label: string; accountNumber?: string; currency?: string; items: ParsedTransaction[] }
+    >();
+    for (const item of filteredImportedTransactions) {
+      const key = item.accountNumber ?? item.accountName ?? "unassigned";
+      const existing = groups.get(key);
+      if (existing) {
+        existing.items.push(item);
+      } else {
+        groups.set(key, {
+          label: item.accountName ?? (language === "id" ? "Akun statement" : "Statement account"),
+          accountNumber: item.accountNumber,
+          currency: item.currency,
+          items: [item],
+        });
+      }
+    }
+    return Array.from(groups.values());
+  }, [filteredImportedTransactions, language]);
   const monthLabel = (month: MonthKey) => {
     const option =
       monthOptions.find((item) => item.key === month) ?? monthOptions[0];
@@ -1015,25 +1036,36 @@ export default function Home() {
                   </div>
                 ) : (
                   <div className="mutation-list">
-                    {filteredImportedTransactions.map((item, index) => (
-                      <div
-                        className="mutation-row"
-                        key={`wallet-mutation-${item.date}-${item.title}-${index}`}
-                      >
-                        <div className={`transaction-icon ${item.color}`}>
-                          {item.icon}
-                        </div>
-                        <div className="transaction-info">
-                          <strong>{item.title}</strong>
+                    {mutationGroups.map((group) => (
+                      <div className="mutation-account-group" key={group.accountNumber ?? group.label}>
+                        <div className="mutation-account-heading">
+                          <strong>{group.label}</strong>
                           <small>
-                            {item.date} · {item.category}
+                            {group.accountNumber ? `Rekening · ${group.accountNumber}` : ""}
+                            {group.currency ? ` · ${group.currency}` : ""}
                           </small>
                         </div>
-                        <strong
-                          className={`amount ${item.amount.startsWith("+") ? "positive" : ""}`}
-                        >
-                          {item.amount}
-                        </strong>
+                        {group.items.map((item, index) => (
+                          <div
+                            className="mutation-row"
+                            key={`wallet-mutation-${item.id ?? item.date}-${item.title}-${index}`}
+                          >
+                            <div className={`transaction-icon ${item.color}`}>
+                              {item.icon}
+                            </div>
+                            <div className="transaction-info">
+                              <strong>{item.title}</strong>
+                              <small>
+                                {item.date} · {item.category}
+                              </small>
+                            </div>
+                            <strong
+                              className={`amount ${item.amount.startsWith("+") ? "positive" : ""}`}
+                            >
+                              {item.amount}
+                            </strong>
+                          </div>
+                        ))}
                       </div>
                     ))}
                   </div>
