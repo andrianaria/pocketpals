@@ -1242,7 +1242,7 @@ export default function Home() {
                     : "—"}
                 </div>
                 <div className="stat-change">
-                  {wallets.length
+                  {latestWallets.length
                     ? language === "id"
                       ? "Saldo terbaca dari statement"
                       : "Balance parsed from statement"
