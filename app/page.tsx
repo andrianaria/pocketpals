@@ -360,12 +360,24 @@ export default function Home() {
       .sort(([, a], [, b]) => b - a)
       .slice(0, 4);
   }, [importedTransactions]);
+  const latestWallets = useMemo(() => {
+    const accounts = new Map<string, ParsedWallet>();
+    for (const wallet of wallets) {
+      const key = [
+        wallet.bank,
+        wallet.accountNumber ?? wallet.accountName,
+        wallet.currency,
+      ].join(":");
+      if (!accounts.has(key)) accounts.set(key, wallet);
+    }
+    return Array.from(accounts.values());
+  }, [wallets]);
   const idrWalletTotal = useMemo(
     () =>
-      wallets
+      latestWallets
         .filter((wallet) => wallet.currency === "IDR")
         .reduce((total, wallet) => total + wallet.endingBalance, 0),
-    [wallets],
+    [latestWallets],
   );
   const chooseTheme = (key: ThemeKey) => {
     setTheme(key);
@@ -922,7 +934,7 @@ export default function Home() {
                     : "TOTAL FROM UPLOADS"}
                 </span>
                 <strong>
-                  {wallets.some((wallet) => wallet.currency === "IDR")
+                  {latestWallets.some((wallet) => wallet.currency === "IDR")
                     ? rupiah(idrWalletTotal)
                     : uploads.length
                       ? language === "id"
@@ -931,8 +943,8 @@ export default function Home() {
                       : "—"}
                 </strong>
                 <small>
-                  {wallets.length
-                    ? `${wallets.length} ${language === "id" ? "rekening terbaca" : "accounts parsed"}`
+                  {latestWallets.length
+                    ? `${latestWallets.length} ${language === "id" ? "rekening aktif" : "active accounts"}`
                     : uploads.length
                       ? `${uploads.length} ${language === "id" ? "statement tersambung" : "statement connected"}`
                       : language === "id"
@@ -940,7 +952,7 @@ export default function Home() {
                         : "No statement uploaded yet"}
                 </small>
               </article>
-              {wallets.length === 0 ? (
+              {latestWallets.length === 0 ? (
                 <div className="wallet-empty content-card">
                   <div>🫶</div>
                   <strong>
@@ -968,7 +980,7 @@ export default function Home() {
                   </button>
                 </div>
               ) : (
-                wallets.map((wallet, index) => (
+                latestWallets.map((wallet, index) => (
                   <article
                     className="wallet-card content-card"
                     key={`${wallet.source}-${wallet.accountName}-${index}`}
@@ -1225,13 +1237,8 @@ export default function Home() {
                   {c.balance} <span>●</span>
                 </div>
                 <div className="stat-value">
-                  {wallets.length
-                    ? rupiah(
-                        wallets.reduce(
-                          (total, wallet) => total + wallet.endingBalance,
-                          0,
-                        ),
-                      )
+                  {latestWallets.some((wallet) => wallet.currency === "IDR")
+                    ? rupiah(idrWalletTotal)
                     : "—"}
                 </div>
                 <div className="stat-change">
