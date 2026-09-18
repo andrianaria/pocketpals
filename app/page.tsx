@@ -472,13 +472,30 @@ export default function Home() {
         BANK_CATALOG.includes(result.bank as BankKey) ? result.bank : bank
       ) as BankKey;
       setBank(parsedBank);
-      setTransactions((items) => [
-        ...result.transactions.map((item, index) => ({
-          ...item,
-          id: item.id ?? `import-${Date.now()}-${index}`,
-        })),
-        ...items,
-      ]);
+      setTransactions((items) => {
+        const hasSameUpload = uploads.some(
+          (item) => item.name === file.name && item.bank === parsedBank,
+        );
+        const legacyTransactions = items.filter(
+          (item) => !item.source && !item.bank,
+        );
+        const replaceLegacyImport =
+          hasSameUpload && legacyTransactions.length === result.transactions.length;
+        const keptItems = items.filter(
+          (item) =>
+            item.source !== file.name &&
+            !(replaceLegacyImport && !item.source && !item.bank),
+        );
+        return [
+          ...result.transactions.map((item, index) => ({
+            ...item,
+            bank: parsedBank,
+            source: file.name,
+            id: item.id ?? `import-${Date.now()}-${index}`,
+          })),
+          ...keptItems,
+        ];
+      });
       setWallets((items) =>
         uniqueWallets([
           ...result.wallets,

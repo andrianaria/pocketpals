@@ -15,6 +15,8 @@ export type ParsedTransaction = {
   accountName?: string;
   accountNumber?: string;
   currency?: string;
+  bank?: string;
+  source?: string;
 };
 export type ParsedWallet = {
   bank: string;
