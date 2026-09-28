@@ -56,15 +56,31 @@ type ImportReport = {
   failedRows: number;
   failures: string[];
 };
+type AutoTagRule = {
+  id?: number;
+  name: string;
+  matchPattern: string;
+  category: string;
+  icon: string;
+  color: string;
+  enabled: boolean;
+};
 const categoryOptions = [
   ["Pemasukan", "green", "💼"],
   ["Makanan & Minuman", "rose", "🍜"],
   ["Transportasi", "blue", "🚕"],
   ["Kartu Kredit", "purple", "💳"],
+  ["Hiburan", "purple", "🎬"],
+  ["Belanja", "yellow", "🛍️"],
   ["Transfer", "yellow", "↔️"],
   ["Pajak", "yellow", "🧾"],
   ["Lainnya", "purple", "📄"],
 ] as const;
+const defaultAutoTagRules: AutoTagRule[] = [
+  { name: "Langganan digital", matchPattern: "netflix, spotify, youtube, disney", category: "Hiburan", icon: "🎬", color: "purple", enabled: true },
+  { name: "Transportasi", matchPattern: "grab, gojek, bluebird, toll, tol", category: "Transportasi", icon: "🚕", color: "blue", enabled: true },
+  { name: "Makan & minum", matchPattern: "starbucks, indomaret, alfamart, restoran, cafe, coffee", category: "Makanan & Minuman", icon: "🍜", color: "rose", enabled: true },
+];
 const themeOptions: {
   key: ThemeKey;
   label: string;
@@ -213,6 +229,8 @@ export default function Home() {
   const [lastImportSummary, setLastImportSummary] = useState("");
   const [dataReady, setDataReady] = useState(false);
   const [autoTagging, setAutoTagging] = useState(true);
+  const [autoTagRules, setAutoTagRules] = useState<AutoTagRule[]>(defaultAutoTagRules);
+  const [newRule, setNewRule] = useState({ name: "", matchPattern: "", category: "Lainnya" });
   const [toast, setToast] = useState("");
   const [importReport, setImportReport] = useState<ImportReport | null>(null);
   const [editingTransaction, setEditingTransaction] = useState<ParsedTransaction | null>(null);
@@ -225,8 +243,10 @@ export default function Home() {
     const savedLanguage = window.localStorage.getItem(
       "pocket-language",
     ) as LanguageKey | null;
+    const savedAutoTagging = window.localStorage.getItem("pocket-auto-tagging");
     if (savedTheme) setTheme(savedTheme);
     if (savedLanguage) setLanguage(savedLanguage);
+    if (savedAutoTagging !== null) setAutoTagging(savedAutoTagging === "true");
   }, []);
   useEffect(() => {
     if (!isLoaded || !user?.id) return;
@@ -264,6 +284,7 @@ export default function Home() {
         if (Array.isArray(remote.uploads)) setUploads(remote.uploads);
         if (Array.isArray(remote.transactions)) setTransactions(remote.transactions);
         if (Array.isArray(remote.wallets)) setWallets(uniqueWallets(remote.wallets));
+        if (Array.isArray(remote.rules) && remote.rules.length) setAutoTagRules(remote.rules);
       })
       .catch(() => undefined);
     return () => { cancelled = true; };
@@ -275,12 +296,16 @@ export default function Home() {
     window.localStorage.setItem("pocket-language", language);
   }, [language]);
   useEffect(() => {
+    window.localStorage.setItem("pocket-auto-tagging", String(autoTagging));
+  }, [autoTagging]);
+  useEffect(() => {
     try {
       const savedUploads = window.localStorage.getItem("pocket-uploads");
       const savedTransactions = window.localStorage.getItem(
         "pocket-transactions",
       );
       const savedWallets = window.localStorage.getItem("pocket-wallets");
+      const savedRules = window.localStorage.getItem("pocket-auto-tag-rules");
       if (savedUploads) {
         const restoredUploads = JSON.parse(savedUploads) as UploadItem[];
         setUploads(Array.from(new Map(restoredUploads.map((item) => [`${item.bank}:${item.name}`, item])).values()));
@@ -297,6 +322,7 @@ export default function Home() {
       if (savedWallets) {
         setWallets(uniqueWallets(JSON.parse(savedWallets) as ParsedWallet[]));
       }
+      if (savedRules) setAutoTagRules(JSON.parse(savedRules) as AutoTagRule[]);
     } catch (error) {
       console.warn("Pocketpals data could not be restored", error);
     } finally {
@@ -318,6 +344,10 @@ export default function Home() {
     if (dataReady)
       window.localStorage.setItem("pocket-wallets", JSON.stringify(wallets));
   }, [wallets, dataReady]);
+  useEffect(() => {
+    if (dataReady)
+      window.localStorage.setItem("pocket-auto-tag-rules", JSON.stringify(autoTagRules));
+  }, [autoTagRules, dataReady]);
   const currentTheme = themeOptions.find((item) => item.key === theme)!;
   const c = translations[language];
   const profileName = user?.fullName || user?.firstName || "Ria Andriana";
@@ -488,6 +518,43 @@ export default function Home() {
         : {}),
     });
   };
+  const applyAutoTagRules = (items: ParsedTransaction[]) => {
+    if (!autoTagging) return items;
+    return items.map((item) => {
+      const haystack = `${item.title} ${item.meta} ${item.note ?? ""}`.toLocaleLowerCase("id-ID");
+      const rule = autoTagRules.find((candidate) =>
+        candidate.enabled && candidate.matchPattern.split(",").some((pattern) => pattern.trim() && haystack.includes(pattern.trim().toLocaleLowerCase("id-ID"))),
+      );
+      if (!rule) return item;
+      return { ...item, category: rule.category, icon: rule.icon, color: rule.color };
+    });
+  };
+  const saveAutoTagRule = (rule: AutoTagRule, index?: number) => {
+    const next = [...autoTagRules];
+    const previous = index === undefined ? undefined : next[index];
+    const shouldCreate = index === undefined || !previous?.id;
+    if (index === undefined) next.push(rule);
+    else next[index] = rule;
+    setAutoTagRules(next);
+    void fetch("/api/pocketpals", {
+      method: shouldCreate ? "POST" : "PATCH",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(shouldCreate
+        ? { action: "rule-create", rule }
+        : { ruleId: previous?.id, rule }),
+    }).then(async (response) => {
+      if (!response.ok) return;
+      if (shouldCreate) {
+        const result = await response.json() as { id?: number };
+        if (result.id) setAutoTagRules((items) => items.map((item, itemIndex) => itemIndex === (index ?? items.length - 1) ? { ...item, id: result.id } : item));
+      }
+    }).catch(() => setToast(language === "id" ? "Rule tersimpan di perangkat" : "Rule saved on this device"));
+  };
+  const deleteAutoTagRule = (index: number) => {
+    const rule = autoTagRules[index];
+    setAutoTagRules((items) => items.filter((_, itemIndex) => itemIndex !== index));
+    if (rule?.id) void fetch("/api/pocketpals", { method: "DELETE", headers: { "content-type": "application/json" }, body: JSON.stringify({ ruleId: rule.id }) });
+  };
   const processFile = async (file: File) => {
     const extension = file.name.toLowerCase().split(".").pop();
     if (!extension || !["csv", "xls", "xlsx", "pdf"].includes(extension)) {
@@ -539,6 +606,7 @@ export default function Home() {
         BANK_CATALOG.includes(result.bank as BankKey) ? result.bank : bank
       ) as BankKey;
       setBank(parsedBank);
+      const taggedTransactions = applyAutoTagRules(result.transactions);
       setTransactions((items) => {
         const hasSameUpload = uploads.some(
           (item) => item.name === file.name && item.bank === parsedBank,
@@ -554,7 +622,7 @@ export default function Home() {
             !(replaceLegacyImport && !item.source && !item.bank),
         );
         return [
-          ...result.transactions.map((item, index) => ({
+          ...taggedTransactions.map((item, index) => ({
             ...item,
             bank: parsedBank,
             source: file.name,
@@ -603,7 +671,7 @@ export default function Home() {
             warningCount: result.warnings.length,
             statementPeriod: result.statementPeriod,
           },
-          transactions: result.transactions.map((item, index) => ({
+          transactions: taggedTransactions.map((item, index) => ({
             ...item,
             bank: parsedBank,
             source: file.name,
@@ -649,6 +717,8 @@ export default function Home() {
       ? "transactions"
       : active === "My wallets"
         ? "wallets"
+        : active === "Settings"
+          ? "settings"
         : "overview";
   return (
     <main className={`app-shell theme-${theme} view-${view}`}>
@@ -681,7 +751,7 @@ export default function Home() {
           ))}
         </nav>
         <div className="sidebar-bottom">
-          <button className="nav-item">
+          <button className={`nav-item ${active === "Settings" ? "selected" : ""}`} onClick={() => setActive("Settings")}>
             <Settings2 size={18} />
             {c.settings}
           </button>
@@ -762,6 +832,8 @@ export default function Home() {
                   ? c.wallets
                   : active === "Upload statement"
                     ? c.uploadStatement
+                  : active === "Settings"
+                    ? c.settings
                   : c.greeting}{" "}
               <span>૮ ˶ᵔ ᵕ ᵔ˶ ა</span>
             </h1>
@@ -1278,6 +1350,59 @@ export default function Home() {
             </div>
           </section>
         )}
+        {active === "Settings" && (
+          <section className="section-view settings-page">
+            <div className="section-toolbar">
+              <div>
+                <h2>{language === "id" ? "Pengaturan" : "Settings"} <span>⚙️</span></h2>
+                <p>{language === "id" ? "Atur cara Pocketpals memberi kategori secara otomatis." : "Control how Pocketpals categorizes transactions automatically."}</p>
+              </div>
+            </div>
+            <section className="content-card auto-settings-card">
+              <div className="settings-hero">
+                <div className="autotag-icon">🏷️</div>
+                <div>
+                  <h3>{c.auto} <span>✨</span></h3>
+                  <p>{language === "id" ? "Cocokkan kata di deskripsi transaksi dengan kategori pilihanmu." : "Match words in transaction descriptions to your preferred categories."}</p>
+                </div>
+                <button className={`toggle ${autoTagging ? "on" : ""}`} role="switch" aria-checked={autoTagging} onClick={() => setAutoTagging((value) => !value)}><span /></button>
+              </div>
+              <div className="settings-status">
+                <span className={autoTagging ? "status-dot active" : "status-dot"} />
+                {autoTagging ? (language === "id" ? "Auto Tagging aktif untuk upload berikutnya" : "Auto Tagging is active for the next upload") : (language === "id" ? "Auto Tagging nonaktif" : "Auto Tagging is turned off")}
+              </div>
+              <div className="rule-form">
+                <div className="rule-form-heading"><strong>{language === "id" ? "Tambah rule baru" : "Add a new rule"}</strong><small>{language === "id" ? "Pisahkan beberapa kata dengan koma." : "Separate multiple keywords with commas."}</small></div>
+                <div className="rule-form-grid">
+                  <input value={newRule.name} onChange={(event) => setNewRule({ ...newRule, name: event.target.value })} placeholder={language === "id" ? "Nama rule" : "Rule name"} aria-label="Rule name" />
+                  <input value={newRule.matchPattern} onChange={(event) => setNewRule({ ...newRule, matchPattern: event.target.value })} placeholder={language === "id" ? "Kata kunci, contoh: grab, gojek" : "Keywords, e.g. grab, gojek"} aria-label="Keywords" />
+                  <select value={newRule.category} onChange={(event) => setNewRule({ ...newRule, category: event.target.value })} aria-label="Category">
+                    {categoryOptions.map(([name]) => <option key={name} value={name}>{name}</option>)}
+                  </select>
+                  <button className="primary-button" type="button" disabled={!newRule.name.trim() || !newRule.matchPattern.trim()} onClick={() => { const selected = categoryOptions.find(([name]) => name === newRule.category) ?? categoryOptions[categoryOptions.length - 1]; saveAutoTagRule({ name: newRule.name.trim(), matchPattern: newRule.matchPattern.trim(), category: selected[0], icon: selected[2], color: selected[1], enabled: true }); setNewRule({ name: "", matchPattern: "", category: "Lainnya" }); }}>{language === "id" ? "Tambah rule" : "Add rule"}</button>
+                </div>
+              </div>
+              <div className="rule-list-heading"><strong>{language === "id" ? "Rule tersimpan" : "Saved rules"}</strong><span>{autoTagRules.length}</span></div>
+              <div className="settings-rule-list">
+                {autoTagRules.map((rule, index) => (
+                  <div className={`settings-rule ${rule.enabled ? "" : "disabled"}`} key={`${rule.id ?? "local"}-${index}`}>
+                    <span className={`transaction-icon ${rule.color}`}>{rule.icon}</span>
+                    <div className="settings-rule-fields">
+                      <input value={rule.name} onChange={(event) => setAutoTagRules((items) => items.map((item, itemIndex) => itemIndex === index ? { ...item, name: event.target.value } : item))} onBlur={() => saveAutoTagRule(autoTagRules[index], index)} aria-label="Rule name" />
+                      <input value={rule.matchPattern} onChange={(event) => setAutoTagRules((items) => items.map((item, itemIndex) => itemIndex === index ? { ...item, matchPattern: event.target.value } : item))} onBlur={() => saveAutoTagRule(autoTagRules[index], index)} aria-label="Keywords" />
+                      <select value={rule.category} onChange={(event) => { const selected = categoryOptions.find(([name]) => name === event.target.value) ?? categoryOptions[categoryOptions.length - 1]; saveAutoTagRule({ ...rule, category: selected[0], color: selected[1], icon: selected[2] }, index); }} aria-label="Category">
+                        {categoryOptions.map(([name]) => <option key={name} value={name}>{name}</option>)}
+                      </select>
+                    </div>
+                    <button type="button" className={`rule-switch ${rule.enabled ? "on" : ""}`} role="switch" aria-checked={rule.enabled} onClick={() => saveAutoTagRule({ ...rule, enabled: !rule.enabled }, index)}><span /></button>
+                    <button type="button" className="rule-delete" onClick={() => deleteAutoTagRule(index)} aria-label={language === "id" ? "Hapus rule" : "Delete rule"}><X size={16} /></button>
+                  </div>
+                ))}
+              </div>
+              <p className="settings-hint">💡 {language === "id" ? "Rule pertama yang cocok akan dipakai. Kamu masih bisa mengubah kategori langsung di menu Transaksi." : "The first matching rule is used. You can still change a category directly in Transactions."}</p>
+            </section>
+          </section>
+        )}
         <div className="main-grid">
           <div className="primary-column">
             <div className="month-row">
@@ -1587,13 +1712,7 @@ export default function Home() {
               )}
               <button
                 className="manage-tags"
-                onClick={() =>
-                  setToast(
-                    language === "id"
-                      ? "Aturan tag siap diatur setelah transaksi nyata masuk"
-                      : "Tag rules can be managed after real transactions are imported",
-                  )
-                }
+                onClick={() => setActive("Settings")}
               >
                 {c.manage} <ArrowUpRight size={14} />
               </button>

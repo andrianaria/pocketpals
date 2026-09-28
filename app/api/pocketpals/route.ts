@@ -71,6 +71,20 @@ const schemaStatements = [
     CONSTRAINT transactions_upload_fk FOREIGN KEY (statement_upload_id) REFERENCES statement_uploads(id) ON DELETE SET NULL,
     CONSTRAINT transactions_wallet_fk FOREIGN KEY (wallet_id) REFERENCES wallets(id) ON DELETE SET NULL
   ) ENGINE=InnoDB`,
+  `CREATE TABLE IF NOT EXISTS auto_tag_rules (
+    id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+    user_id BIGINT UNSIGNED NOT NULL,
+    rule_name VARCHAR(191) NOT NULL,
+    match_pattern VARCHAR(255) NOT NULL,
+    category VARCHAR(80) NOT NULL,
+    icon VARCHAR(16) NULL,
+    color VARCHAR(24) NULL,
+    is_enabled TINYINT(1) NOT NULL DEFAULT 1,
+    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    PRIMARY KEY (id), KEY auto_rules_user_enabled (user_id, is_enabled),
+    CONSTRAINT auto_rules_user_fk FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+  ) ENGINE=InnoDB`,
 ];
 
 function getHyperdrive() {
@@ -167,6 +181,11 @@ export async function GET() {
        FROM wallets WHERE user_id = ? ORDER BY created_at DESC`,
       [userId],
     );
+    const [rules] = await connection.execute(
+      `SELECT id, rule_name AS name, match_pattern AS matchPattern, category, icon, color, is_enabled AS enabled
+       FROM auto_tag_rules WHERE user_id = ? ORDER BY created_at ASC, id ASC`,
+      [userId],
+    );
     return Response.json({
       uploads: (uploads as Array<Record<string, unknown>>).map((row) => ({
         id: Number(row.id), name: row.name, bank: row.bank, status: row.status,
@@ -178,6 +197,11 @@ export async function GET() {
       wallets: (wallets as Array<Record<string, unknown>>).map((row) => ({
         bank: row.bank, accountName: row.accountName, accountNumber: row.accountNumber ?? undefined,
         currency: row.currency, endingBalance: Number(row.endingBalance ?? 0), source: "database",
+      })),
+      rules: (rules as Array<Record<string, unknown>>).map((row) => ({
+        id: Number(row.id), name: String(row.name ?? ""), matchPattern: String(row.matchPattern ?? ""),
+        category: String(row.category ?? "Lainnya"), icon: String(row.icon ?? "📄"),
+        color: String(row.color ?? "purple"), enabled: Boolean(row.enabled),
       })),
     });
   } catch (error) {
@@ -198,11 +222,19 @@ export async function POST(request: Request) {
       upload?: { name: string; bank: string; size?: string; parsedRows?: number; warningCount?: number; statementPeriod?: string };
       transactions?: Array<Record<string, unknown>>;
       wallets?: Array<Record<string, unknown>>;
+      rule?: { id?: number; name: string; matchPattern: string; category: string; icon?: string; color?: string; enabled?: boolean };
     };
-    if (body.action !== "import" || !body.upload) return Response.json({ error: "Invalid import payload" }, { status: 400 });
     connection = await connect();
     await ensureSchema(connection);
     const userId = await getDbUser(connection, identity);
+    if (body.action === "rule-create" && body.rule) {
+      const [result] = await connection.execute(
+        `INSERT INTO auto_tag_rules (user_id, rule_name, match_pattern, category, icon, color, is_enabled) VALUES (?, ?, ?, ?, ?, ?, ?)`,
+        [userId, body.rule.name, body.rule.matchPattern, body.rule.category, body.rule.icon ?? "📄", body.rule.color ?? "purple", body.rule.enabled === false ? 0 : 1],
+      );
+      return Response.json({ ok: true, id: Number((result as { insertId: number }).insertId) });
+    }
+    if (body.action !== "import" || !body.upload) return Response.json({ error: "Invalid import payload" }, { status: 400 });
     const upload = body.upload;
     const sizeBytes = Number(String(upload.size ?? "0").replace(/[^0-9]/g, "")) * 1024;
     const [existing] = await connection.execute(
@@ -258,11 +290,18 @@ export async function PATCH(request: Request) {
   if (!identity) return Response.json({ error: "Unauthorized" }, { status: 401 });
   let connection: Connection | undefined;
   try {
-    const body = await request.json() as { id?: string; changes?: Record<string, unknown> };
-    if (!body.id || !body.changes) return Response.json({ error: "Invalid update payload" }, { status: 400 });
+    const body = await request.json() as { id?: string; changes?: Record<string, unknown>; ruleId?: number; rule?: Record<string, unknown> };
     connection = await connect();
     await ensureSchema(connection);
     const userId = await getDbUser(connection, identity);
+    if (body.ruleId && body.rule) {
+      await connection.execute(
+        `UPDATE auto_tag_rules SET rule_name = COALESCE(?, rule_name), match_pattern = COALESCE(?, match_pattern), category = COALESCE(?, category), icon = COALESCE(?, icon), color = COALESCE(?, color), is_enabled = COALESCE(?, is_enabled) WHERE id = ? AND user_id = ?`,
+        [body.rule.name ?? null, body.rule.matchPattern ?? null, body.rule.category ?? null, body.rule.icon ?? null, body.rule.color ?? null, typeof body.rule.enabled === "boolean" ? (body.rule.enabled ? 1 : 0) : null, body.ruleId, userId],
+      );
+      return Response.json({ ok: true });
+    }
+    if (!body.id || !body.changes) return Response.json({ error: "Invalid update payload" }, { status: 400 });
     const changes = body.changes;
     await connection.execute(
       `UPDATE transactions SET category = COALESCE(?, category), remarks = COALESCE(?, remarks), title = COALESCE(?, title), amount = COALESCE(?, amount), transaction_date = COALESCE(?, transaction_date)
@@ -282,11 +321,15 @@ export async function DELETE(request: Request) {
   if (!identity) return Response.json({ error: "Unauthorized" }, { status: 401 });
   let connection: Connection | undefined;
   try {
-    const body = await request.json() as { id?: string };
-    if (!body.id) return Response.json({ error: "Missing transaction id" }, { status: 400 });
+    const body = await request.json() as { id?: string; ruleId?: number };
     connection = await connect();
     await ensureSchema(connection);
     const userId = await getDbUser(connection, identity);
+    if (body.ruleId) {
+      await connection.execute(`DELETE FROM auto_tag_rules WHERE id = ? AND user_id = ?`, [body.ruleId, userId]);
+      return Response.json({ ok: true });
+    }
+    if (!body.id) return Response.json({ error: "Missing transaction id" }, { status: 400 });
     await connection.execute(`DELETE FROM transactions WHERE user_id = ? AND (external_id = ? OR CAST(id AS CHAR) = ?)`, [userId, body.id, body.id]);
     return Response.json({ ok: true });
   } catch (error) {
