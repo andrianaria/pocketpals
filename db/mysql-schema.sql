@@ -1,8 +1,4 @@
-CREATE DATABASE IF NOT EXISTS `pocketpals_dev`
-  CHARACTER SET utf8mb4
-  COLLATE utf8mb4_unicode_ci;
-
-USE `pocketpals_dev`;
+USE `pocketpals`;
 
 CREATE TABLE IF NOT EXISTS users (
   id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
@@ -61,12 +57,15 @@ CREATE TABLE IF NOT EXISTS transactions (
   transaction_date DATE NOT NULL,
   title VARCHAR(255) NOT NULL,
   description TEXT NULL,
+  remarks TEXT NULL,
+  meta VARCHAR(255) NULL,
   amount DECIMAL(19,2) NOT NULL,
   direction VARCHAR(10) NOT NULL DEFAULT 'debit',
   category VARCHAR(80) NOT NULL DEFAULT 'Lainnya',
   icon VARCHAR(16) NULL,
   color VARCHAR(24) NULL,
   auto_tagged TINYINT(1) NOT NULL DEFAULT 0,
+  source_file VARCHAR(255) NULL,
   source_reference VARCHAR(191) NULL,
   created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
   PRIMARY KEY (id),

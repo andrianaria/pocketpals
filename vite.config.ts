@@ -6,6 +6,8 @@ import { sites } from "./build/sites-vite-plugin";
 
 const SITE_CREATOR_PLACEHOLDER_DATABASE_ID =
   "00000000-0000-4000-8000-000000000000";
+const POCKETPALS_HYPERDRIVE_ID =
+  "114bc09dca1444c29eef7980d602646a";
 
 const { d1, r2 } = hostingConfig;
 
@@ -25,6 +27,12 @@ const localBindingConfig = {
         },
       ]
     : [],
+  hyperdrive: [
+    {
+      binding: "HYPERDRIVE",
+      id: POCKETPALS_HYPERDRIVE_ID,
+    },
+  ],
   r2_buckets: r2
     ? [
         {

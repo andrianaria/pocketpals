@@ -198,7 +198,7 @@ const uniqueWallets = (items: ParsedWallet[]) =>
   Array.from(new Map(items.map((item) => [walletKey(item), item])).values());
 
 export default function Home() {
-  const { user } = useUser();
+  const { user, isLoaded } = useUser();
   const { openUserProfile, signOut } = useClerk();
   const [theme, setTheme] = useState<ThemeKey>("sakura");
   const [language, setLanguage] = useState<LanguageKey>("id");
@@ -228,6 +228,46 @@ export default function Home() {
     if (savedTheme) setTheme(savedTheme);
     if (savedLanguage) setLanguage(savedLanguage);
   }, []);
+  useEffect(() => {
+    if (!isLoaded || !user?.id) return;
+    let cancelled = false;
+    fetch("/api/pocketpals")
+      .then((response) => (response.ok ? response.json() : null))
+      .then((remote) => {
+        if (cancelled || !remote) return;
+        const localUploads = JSON.parse(window.localStorage.getItem("pocket-uploads") ?? "[]") as UploadItem[];
+        const localTransactions = JSON.parse(window.localStorage.getItem("pocket-transactions") ?? "[]") as ParsedTransaction[];
+        const localWallets = JSON.parse(window.localStorage.getItem("pocket-wallets") ?? "[]") as ParsedWallet[];
+        const remoteHasData = remote.uploads?.length || remote.transactions?.length || remote.wallets?.length;
+        if (!remoteHasData && localUploads.length) {
+          for (const upload of localUploads) {
+            void fetch("/api/pocketpals", {
+              method: "POST",
+              headers: { "content-type": "application/json" },
+              body: JSON.stringify({
+                action: "import",
+                upload: {
+                  name: upload.name,
+                  bank: upload.bank,
+                  size: upload.size,
+                  parsedRows: upload.parsedRows,
+                  warningCount: upload.warningCount,
+                  statementPeriod: upload.statementPeriod,
+                },
+                transactions: localTransactions.filter((item) => item.source === upload.name && item.bank === upload.bank),
+                wallets: localWallets.filter((item) => item.source === upload.name && item.bank === upload.bank),
+              }),
+            });
+          }
+          return;
+        }
+        if (Array.isArray(remote.uploads)) setUploads(remote.uploads);
+        if (Array.isArray(remote.transactions)) setTransactions(remote.transactions);
+        if (Array.isArray(remote.wallets)) setWallets(uniqueWallets(remote.wallets));
+      })
+      .catch(() => undefined);
+    return () => { cancelled = true; };
+  }, [isLoaded, user?.id]);
   useEffect(() => {
     window.localStorage.setItem("pocket-theme", theme);
   }, [theme]);
@@ -394,6 +434,11 @@ export default function Home() {
     setTransactions((items) =>
       items.map((item) => (item.id === updated.id ? updated : item)),
     );
+    void fetch("/api/pocketpals", {
+      method: "PATCH",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ id: updated.id, changes: updated }),
+    });
     setEditingTransaction(null);
     setToast("Transaksi berhasil disimpan ✨");
     window.setTimeout(() => setToast(""), 2200);
@@ -402,6 +447,11 @@ export default function Home() {
     if (!transaction.id) return;
     if (!window.confirm(`Hapus transaksi “${transaction.title}”?`)) return;
     setTransactions((items) => items.filter((item) => item.id !== transaction.id));
+    void fetch("/api/pocketpals", {
+      method: "DELETE",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ id: transaction.id }),
+    });
     setToast("Transaksi dihapus");
     window.setTimeout(() => setToast(""), 2200);
   };
@@ -419,6 +469,11 @@ export default function Home() {
         };
       }),
     );
+    void fetch("/api/pocketpals", {
+      method: "PATCH",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ id, changes }),
+    });
   };
   const updateTransactionCategory = (
     transaction: ParsedTransaction,
@@ -535,6 +590,28 @@ export default function Home() {
         },
         ...items.filter((item) => !(item.name === file.name && item.bank === parsedBank)),
       ]);
+      void fetch("/api/pocketpals", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          action: "import",
+          upload: {
+            name: file.name,
+            bank: parsedBank,
+            size: kb,
+            parsedRows: result.rowsFound,
+            warningCount: result.warnings.length,
+            statementPeriod: result.statementPeriod,
+          },
+          transactions: result.transactions.map((item, index) => ({
+            ...item,
+            bank: parsedBank,
+            source: file.name,
+            id: item.id ?? `import-${Date.now()}-${index}`,
+          })),
+          wallets: result.wallets,
+        }),
+      }).catch(() => setToast("Tersimpan di perangkat, sinkronisasi database perlu dicoba lagi"));
       setToast(
         result.warnings.length
           ? "Statement masuk, perlu review kecil"
