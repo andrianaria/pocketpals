@@ -26,6 +26,7 @@ const schemaStatements = [
     parsed_rows INT UNSIGNED NOT NULL DEFAULT 0,
     warning_count INT UNSIGNED NOT NULL DEFAULT 0,
     statement_period VARCHAR(80) NULL,
+    space_key VARCHAR(20) NOT NULL DEFAULT 'personal',
     created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
     PRIMARY KEY (id), KEY uploads_user_created (user_id, created_at),
     CONSTRAINT uploads_user_fk FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
@@ -39,6 +40,7 @@ const schemaStatements = [
     account_number VARCHAR(80) NULL,
     currency CHAR(3) NOT NULL DEFAULT 'IDR',
     ending_balance DECIMAL(19,2) NOT NULL DEFAULT 0,
+    space_key VARCHAR(20) NOT NULL DEFAULT 'personal',
     statement_date DATE NULL,
     created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
     PRIMARY KEY (id), KEY wallets_user_account (user_id, bank_key, account_number),
@@ -64,6 +66,7 @@ const schemaStatements = [
     color VARCHAR(24) NULL,
     auto_tagged TINYINT(1) NOT NULL DEFAULT 0,
     source_file VARCHAR(255) NULL,
+    space_key VARCHAR(20) NOT NULL DEFAULT 'personal',
     created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
     PRIMARY KEY (id), KEY transactions_user_date (user_id, transaction_date),
     KEY transactions_user_category (user_id, category), KEY transactions_upload (statement_upload_id),
@@ -99,6 +102,9 @@ async function connect() {
 
 async function ensureSchema(connection: Connection) {
   for (const statement of schemaStatements) await connection.query(statement);
+  for (const table of ["statement_uploads", "wallets", "transactions"]) {
+    try { await connection.query(`ALTER TABLE ${table} ADD COLUMN space_key VARCHAR(20) NOT NULL DEFAULT 'personal'`); } catch { /* already present */ }
+  }
 }
 
 async function requireUser() {
@@ -153,6 +159,7 @@ function asTransaction(row: Record<string, unknown>) {
     accountNumber: row.account_number ? String(row.account_number) : undefined,
     accountName: row.account_name ? String(row.account_name) : undefined,
     currency: row.currency ? String(row.currency) : undefined,
+    space: row.space_key === "business" ? "business" : "personal",
   };
 }
 
@@ -171,13 +178,13 @@ export async function GET() {
       [userId],
     );
     const [uploads] = await connection.execute(
-      `SELECT id, file_name AS name, bank_key AS bank, status, file_size_bytes, parsed_rows, warning_count, statement_period, created_at
+      `SELECT id, file_name AS name, bank_key AS bank, status, file_size_bytes, parsed_rows, warning_count, statement_period, space_key, created_at
        FROM statement_uploads WHERE user_id = ? ORDER BY created_at DESC`,
       [userId],
     );
     const [wallets] = await connection.execute(
       `SELECT bank_key AS bank, account_name AS accountName, account_number AS accountNumber,
-       currency, ending_balance AS endingBalance, statement_upload_id AS statementUploadId
+       currency, ending_balance AS endingBalance, statement_upload_id AS statementUploadId, space_key AS space
        FROM wallets WHERE user_id = ? ORDER BY created_at DESC`,
       [userId],
     );
@@ -191,12 +198,12 @@ export async function GET() {
         id: Number(row.id), name: row.name, bank: row.bank, status: row.status,
         size: `${Math.max(1, Math.round(Number(row.file_size_bytes ?? 0) / 1024))} KB`,
         parsedRows: Number(row.parsed_rows ?? 0), warningCount: Number(row.warning_count ?? 0),
-        statementPeriod: row.statement_period ?? undefined,
+        statementPeriod: row.statement_period ?? undefined, space: row.space_key === "business" ? "business" : "personal",
       })),
       transactions: (transactions as Array<Record<string, unknown>>).map(asTransaction),
       wallets: (wallets as Array<Record<string, unknown>>).map((row) => ({
         bank: row.bank, accountName: row.accountName, accountNumber: row.accountNumber ?? undefined,
-        currency: row.currency, endingBalance: Number(row.endingBalance ?? 0), source: "database",
+        currency: row.currency, endingBalance: Number(row.endingBalance ?? 0), source: "database", space: row.space === "business" ? "business" : "personal",
       })),
       rules: (rules as Array<Record<string, unknown>>).map((row) => ({
         id: Number(row.id), name: String(row.name ?? ""), matchPattern: String(row.matchPattern ?? ""),
@@ -219,7 +226,7 @@ export async function POST(request: Request) {
   try {
     const body = await request.json() as {
       action?: string;
-      upload?: { name: string; bank: string; size?: string; parsedRows?: number; warningCount?: number; statementPeriod?: string };
+      upload?: { name: string; bank: string; size?: string; parsedRows?: number; warningCount?: number; statementPeriod?: string; space?: "personal" | "business" };
       transactions?: Array<Record<string, unknown>>;
       wallets?: Array<Record<string, unknown>>;
       rule?: { id?: number; name: string; matchPattern: string; category: string; icon?: string; color?: string; enabled?: boolean };
@@ -255,19 +262,19 @@ export async function POST(request: Request) {
       await connection.execute(`DELETE FROM statement_uploads WHERE id = ?`, [existingId]);
     }
     const [uploadResult] = await connection.execute(
-      `INSERT INTO statement_uploads (user_id, bank_key, file_name, file_type, file_size_bytes, parsed_rows, warning_count, statement_period)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+      `INSERT INTO statement_uploads (user_id, bank_key, file_name, file_type, file_size_bytes, parsed_rows, warning_count, statement_period, space_key)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [userId, upload.bank, upload.name, upload.name.split(".").pop() ?? "unknown", sizeBytes,
-        upload.parsedRows ?? 0, upload.warningCount ?? 0, upload.statementPeriod ?? null],
+        upload.parsedRows ?? 0, upload.warningCount ?? 0, upload.statementPeriod ?? null, upload.space === "business" ? "business" : "personal"],
     );
     const uploadId = Number((uploadResult as { insertId: number }).insertId);
     const walletIds = new Map<string, number>();
     for (const wallet of body.wallets ?? []) {
       const [result] = await connection.execute(
-        `INSERT INTO wallets (user_id, statement_upload_id, bank_key, account_name, account_number, currency, ending_balance)
-         VALUES (?, ?, ?, ?, ?, ?, ?)`,
+        `INSERT INTO wallets (user_id, statement_upload_id, bank_key, account_name, account_number, currency, ending_balance, space_key)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
         [userId, uploadId, wallet.bank ?? upload.bank, wallet.accountName ?? "Statement account", wallet.accountNumber ?? null,
-          wallet.currency ?? "IDR", Number(wallet.endingBalance ?? 0)],
+          wallet.currency ?? "IDR", Number(wallet.endingBalance ?? 0), wallet.space === "business" ? "business" : (upload.space === "business" ? "business" : "personal")],
       );
       walletIds.set(`${wallet.accountNumber ?? wallet.accountName}`, Number((result as { insertId: number }).insertId));
     }
@@ -275,12 +282,12 @@ export async function POST(request: Request) {
       const externalId = String(transaction.id ?? crypto.randomUUID());
       const walletId = walletIds.get(String(transaction.accountNumber ?? transaction.accountName));
       await connection.execute(
-        `INSERT INTO transactions (user_id, statement_upload_id, wallet_id, external_id, bank_key, transaction_date, title, description, remarks, meta, amount, direction, category, icon, color, source_file)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        `INSERT INTO transactions (user_id, statement_upload_id, wallet_id, external_id, bank_key, transaction_date, title, description, remarks, meta, amount, direction, category, icon, color, source_file, space_key)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         [userId, uploadId, walletId ?? null, externalId, transaction.bank ?? upload.bank, cleanDate(String(transaction.date ?? "")),
           transaction.title ?? "Imported transaction", transaction.title ?? null, transaction.note ?? null, transaction.meta ?? null,
           Number(transaction.amountValue ?? 0), transaction.direction ?? "debit", transaction.category ?? "Lainnya",
-          transaction.icon ?? "📄", transaction.color ?? "purple", transaction.source ?? upload.name],
+          transaction.icon ?? "📄", transaction.color ?? "purple", transaction.source ?? upload.name, transaction.space === "business" ? "business" : (upload.space === "business" ? "business" : "personal")],
       );
     }
     return Response.json({ ok: true, uploadId });
@@ -311,10 +318,10 @@ export async function PATCH(request: Request) {
     if (!body.id || !body.changes) return Response.json({ error: "Invalid update payload" }, { status: 400 });
     const changes = body.changes;
     await connection.execute(
-      `UPDATE transactions SET category = COALESCE(?, category), remarks = COALESCE(?, remarks), title = COALESCE(?, title), amount = COALESCE(?, amount), transaction_date = COALESCE(?, transaction_date)
+      `UPDATE transactions SET category = COALESCE(?, category), remarks = COALESCE(?, remarks), title = COALESCE(?, title), amount = COALESCE(?, amount), transaction_date = COALESCE(?, transaction_date), space_key = COALESCE(?, space_key)
        WHERE user_id = ? AND (external_id = ? OR CAST(id AS CHAR) = ?)`,
       [changes.category ?? null, changes.note ?? null, changes.title ?? null, changes.amountValue ?? null,
-        cleanDate(changes.date ? String(changes.date) : undefined), userId, body.id, body.id],
+        cleanDate(changes.date ? String(changes.date) : undefined), changes.space === "business" ? "business" : (changes.space === "personal" ? "personal" : null), userId, body.id, body.id],
     );
     return Response.json({ ok: true });
   } catch (error) {

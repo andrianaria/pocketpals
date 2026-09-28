@@ -17,6 +17,7 @@ export type ParsedTransaction = {
   currency?: string;
   bank?: string;
   source?: string;
+  space?: "personal" | "business";
 };
 export type ParsedWallet = {
   bank: string;
@@ -25,6 +26,7 @@ export type ParsedWallet = {
   currency: string;
   endingBalance: number;
   source: string;
+  space?: "personal" | "business";
 };
 export type ParseResult = {
   bank: string;

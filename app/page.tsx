@@ -34,6 +34,8 @@ pdfjs.GlobalWorkerOptions.workerSrc = pdfWorker;
 
 type ThemeKey = "sakura" | "matcha" | "blueberry" | "peach";
 type LanguageKey = "id" | "en";
+type FinancialSpace = "personal" | "business";
+type DirectionFilter = "all" | "credit" | "debit";
 type BankKey = (typeof BANK_CATALOG)[number];
 type MonthKey = "all" | "2026-09" | "2026-08" | "2026-07" | "2026-06";
 type UploadItem = {
@@ -45,6 +47,7 @@ type UploadItem = {
   parsedRows: number;
   warningCount: number;
   statementPeriod?: string;
+  space?: FinancialSpace;
 };
 type ImportReport = {
   fileName: string;
@@ -209,6 +212,7 @@ const walletKey = (wallet: ParsedWallet) =>
     wallet.source,
     wallet.accountNumber ?? wallet.accountName,
     wallet.currency,
+    wallet.space ?? "personal",
   ].join(":");
 const uniqueWallets = (items: ParsedWallet[]) =>
   Array.from(new Map(items.map((item) => [walletKey(item), item])).values());
@@ -221,6 +225,9 @@ export default function Home() {
   const [active, setActive] = useState("Overview");
   const [bank, setBank] = useState<BankKey>("DBS");
   const [monthFilter, setMonthFilter] = useState<MonthKey>("all");
+  const [spaceFilter, setSpaceFilter] = useState<"all" | FinancialSpace>("all");
+  const [directionFilter, setDirectionFilter] = useState<DirectionFilter>("all");
+  const [uploadSpace, setUploadSpace] = useState<FinancialSpace>("personal");
   const [transactionSearch, setTransactionSearch] = useState("");
   const [uploads, setUploads] = useState<UploadItem[]>([]);
   const [transactions, setTransactions] = useState<ParsedTransaction[]>([]);
@@ -273,6 +280,7 @@ export default function Home() {
                   parsedRows: upload.parsedRows,
                   warningCount: upload.warningCount,
                   statementPeriod: upload.statementPeriod,
+                  space: upload.space ?? "personal",
                 },
                 transactions: localTransactions.filter((item) => item.source === upload.name && item.bank === upload.bank),
                 wallets: localWallets.filter((item) => item.source === upload.name && item.bank === upload.bank),
@@ -308,7 +316,7 @@ export default function Home() {
       const savedRules = window.localStorage.getItem("pocket-auto-tag-rules");
       if (savedUploads) {
         const restoredUploads = JSON.parse(savedUploads) as UploadItem[];
-        setUploads(Array.from(new Map(restoredUploads.map((item) => [`${item.bank}:${item.name}`, item])).values()));
+        setUploads(Array.from(new Map(restoredUploads.map((item) => [`${item.bank}:${item.name}`, { ...item, space: item.space ?? "personal" }])).values()));
       }
       if (savedTransactions) {
         const restored = JSON.parse(savedTransactions) as ParsedTransaction[];
@@ -316,7 +324,7 @@ export default function Home() {
           restored.filter(
             (item) =>
               Boolean(item.date) && typeof item.amountValue === "number",
-          ).map((item, index) => ({ ...item, id: item.id ?? `restored-${index}-${item.date}` })),
+          ).map((item, index) => ({ ...item, id: item.id ?? `restored-${index}-${item.date}`, space: item.space ?? "personal" })),
         );
       }
       if (savedWallets) {
@@ -362,7 +370,9 @@ export default function Home() {
     return transactions.filter((item) => {
       const matchesMonth =
         monthFilter === "all" || transactionMonth(item.date) === monthFilter;
-      if (!matchesMonth) return false;
+      const matchesSpace = spaceFilter === "all" || (item.space ?? "personal") === spaceFilter;
+      const matchesDirection = directionFilter === "all" || item.direction === directionFilter;
+      if (!matchesMonth || !matchesSpace || !matchesDirection) return false;
       if (!query) return true;
       const searchableText = [
         item.title,
@@ -380,7 +390,7 @@ export default function Home() {
         (compactQuery.length > 0 && compactAmount.includes(compactQuery))
       );
     });
-  }, [monthFilter, transactionSearch, transactions]);
+  }, [directionFilter, monthFilter, spaceFilter, transactionSearch, transactions]);
   const filteredImportedTransactions = useMemo(() => {
     const importedIds = new Set(importedTransactions.map((item) => item.id));
     return filteredTransactions.filter((item) => importedIds.has(item.id));
@@ -437,6 +447,7 @@ export default function Home() {
         wallet.bank,
         wallet.accountNumber ?? wallet.accountName,
         wallet.currency,
+        wallet.space ?? "personal",
       ].join(":");
       if (!accounts.has(key)) accounts.set(key, wallet);
     }
@@ -650,6 +661,7 @@ export default function Home() {
           ...taggedTransactions.map((item, index) => ({
             ...item,
             bank: parsedBank,
+            space: uploadSpace,
             source: file.name,
             id: item.id ?? `import-${Date.now()}-${index}`,
           })),
@@ -658,7 +670,7 @@ export default function Home() {
       });
       setWallets((items) =>
         uniqueWallets([
-          ...result.wallets,
+          ...result.wallets.map((item) => ({ ...item, space: uploadSpace })),
           ...items.filter(
             (item) => !(item.bank === parsedBank && item.source === file.name),
           ),
@@ -680,6 +692,7 @@ export default function Home() {
           parsedRows: result.rowsFound,
           warningCount: result.warnings.length,
           statementPeriod: result.statementPeriod,
+          space: uploadSpace,
         },
         ...items.filter((item) => !(item.name === file.name && item.bank === parsedBank)),
       ]);
@@ -695,14 +708,16 @@ export default function Home() {
             parsedRows: result.rowsFound,
             warningCount: result.warnings.length,
             statementPeriod: result.statementPeriod,
+            space: uploadSpace,
           },
           transactions: taggedTransactions.map((item, index) => ({
             ...item,
             bank: parsedBank,
+            space: uploadSpace,
             source: file.name,
             id: item.id ?? `import-${Date.now()}-${index}`,
           })),
-          wallets: result.wallets,
+          wallets: result.wallets.map((item) => ({ ...item, space: uploadSpace })),
         }),
       }).catch(() => setToast("Tersimpan di perangkat, sinkronisasi database perlu dicoba lagi"));
       setToast(
@@ -728,6 +743,7 @@ export default function Home() {
           size: kb,
           parsedRows: 0,
           warningCount: 1,
+          space: uploadSpace,
         },
         ...items.filter((item) => !(item.name === file.name && item.bank === bank)),
       ]);
@@ -966,6 +982,22 @@ export default function Home() {
                 </select>
                 <ChevronDown size={16} />
                 </label>
+                <label className="filter-pill">
+                  <span>{language === "id" ? "Ruang" : "Space"}</span>
+                  <select value={spaceFilter} onChange={(event) => setSpaceFilter(event.target.value as "all" | FinancialSpace)} aria-label={language === "id" ? "Filter ruang keuangan" : "Financial space filter"}>
+                    <option value="all">{language === "id" ? "Semua" : "All"}</option>
+                    <option value="personal">👤 {language === "id" ? "Personal" : "Personal"}</option>
+                    <option value="business">💼 {language === "id" ? "Bisnis" : "Business"}</option>
+                  </select>
+                </label>
+                <label className="filter-pill">
+                  <span>{language === "id" ? "Jenis" : "Type"}</span>
+                  <select value={directionFilter} onChange={(event) => setDirectionFilter(event.target.value as DirectionFilter)} aria-label={language === "id" ? "Filter pemasukan dan pengeluaran" : "Income and expense filter"}>
+                    <option value="all">{language === "id" ? "Semua" : "All"}</option>
+                    <option value="credit">↗ {language === "id" ? "Pemasukan" : "Income"}</option>
+                    <option value="debit">↘ {language === "id" ? "Pengeluaran" : "Expense"}</option>
+                  </select>
+                </label>
               </div>
             </div>
             <div className="transaction-summary">
@@ -1019,6 +1051,7 @@ export default function Home() {
                   <div className="transaction-info">
                     <strong>{item.title}</strong>
                     <small>{item.meta}</small>
+                    <small className="space-tag">{item.space === "business" ? "💼 Bisnis" : "👤 Personal"}</small>
                     {item.note && <small className="transaction-note">📝 {item.note}</small>}
                   </div>
                   <div className="transaction-inline-fields">
@@ -1354,6 +1387,13 @@ export default function Home() {
                     </select>
                     <ChevronDown size={16} />
                   </div>
+                  <div className="space-select-card">
+                    <span>Ruang keuangan</span>
+                    <select value={uploadSpace} onChange={(event) => setUploadSpace(event.target.value as FinancialSpace)} aria-label="Ruang keuangan upload">
+                      <option value="personal">👤 Personal</option>
+                      <option value="business">💼 Bisnis</option>
+                    </select>
+                  </div>
                 </div>
                 <input ref={fileRef} type="file" hidden accept=".pdf,.csv,.xlsx,.xls" onChange={(e) => e.target.files?.[0] && processFile(e.target.files[0])} />
                 <button className="drop-zone" onClick={() => fileRef.current?.click()} onDragOver={(event) => event.preventDefault()} onDrop={(event) => { event.preventDefault(); const file = event.dataTransfer.files?.[0]; if (file) processFile(file); }}>
@@ -1568,6 +1608,7 @@ export default function Home() {
                     <div className="transaction-info">
                       <strong>{item.title}</strong>
                       <small>{item.meta}</small>
+                      <small className="space-tag">{item.space === "business" ? "💼 Bisnis" : "👤 Personal"}</small>
                     </div>
                     <strong
                       className={`amount ${item.amount.startsWith("+") ? "positive" : ""}`}
@@ -1631,9 +1672,16 @@ export default function Home() {
                       </option>
                     ))}
                   </select>
-                  <ChevronDown size={16} />
+                    <ChevronDown size={16} />
+                  </div>
+                  <div className="space-select-card">
+                    <span>Ruang keuangan</span>
+                    <select value={uploadSpace} onChange={(event) => setUploadSpace(event.target.value as FinancialSpace)} aria-label="Ruang keuangan upload">
+                      <option value="personal">👤 Personal</option>
+                      <option value="business">💼 Bisnis</option>
+                    </select>
+                  </div>
                 </div>
-              </div>
               <input
                 ref={fileRef}
                 type="file"
@@ -1825,6 +1873,7 @@ export default function Home() {
               </select></label>
               <label>Jenis<select value={editingTransaction.direction} onChange={(event) => setEditingTransaction({ ...editingTransaction, direction: event.target.value as "credit" | "debit" })}><option value="debit">Pengeluaran</option><option value="credit">Pemasukan</option></select></label>
             </div>
+            <label>Ruang keuangan<select value={editingTransaction.space ?? "personal"} onChange={(event) => setEditingTransaction({ ...editingTransaction, space: event.target.value as FinancialSpace })}><option value="personal">👤 Personal</option><option value="business">💼 Bisnis</option></select></label>
             <label>Catatan pribadi<textarea value={editingTransaction.note ?? ""} onChange={(event) => setEditingTransaction({ ...editingTransaction, note: event.target.value })} placeholder="Contoh: reimbursement kantor, langganan, atau keperluan lain…" /></label>
             <div className="edit-card-actions"><button type="button" className="secondary-button" onClick={() => setEditingTransaction(null)}>Batal</button><button type="submit" className="primary-button">Simpan perubahan</button></div>
           </form>
