@@ -227,6 +227,13 @@ export async function POST(request: Request) {
     connection = await connect();
     await ensureSchema(connection);
     const userId = await getDbUser(connection, identity);
+    if (body.action === "reset-financial-data") {
+      await connection.execute(`DELETE FROM transactions WHERE user_id = ?`, [userId]);
+      await connection.execute(`DELETE FROM wallets WHERE user_id = ?`, [userId]);
+      await connection.execute(`DELETE FROM statement_uploads WHERE user_id = ?`, [userId]);
+      await connection.execute(`DELETE FROM auto_tag_rules WHERE user_id = ?`, [userId]);
+      return Response.json({ ok: true, reset: true });
+    }
     if (body.action === "rule-create" && body.rule) {
       const [result] = await connection.execute(
         `INSERT INTO auto_tag_rules (user_id, rule_name, match_pattern, category, icon, color, is_enabled) VALUES (?, ?, ?, ?, ?, ?, ?)`,

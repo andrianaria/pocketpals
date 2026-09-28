@@ -1589,6 +1589,12 @@ select {
 .rule-switch.on span { transform: translateX(16px); }
 .rule-delete { display: grid; place-items: center; width: 30px; height: 30px; border: 0; border-radius: 9px; background: #fff0f2; color: #c95e72; cursor: pointer; }
 .settings-hint { margin: 16px 0 0; color: var(--muted); font-size: 12px; }
+.danger-zone { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin-top: 22px; padding: 15px; border: 1px solid #f0c9d0; border-radius: 14px; background: #fff7f8; }
+.danger-zone strong, .danger-zone small { display: block; }
+.danger-zone strong { color: #a94c61; font-size: 13px; }
+.danger-zone small { margin-top: 4px; color: #a77f88; font-size: 11px; }
+.danger-button { flex: 0 0 auto; border: 1px solid #d77a8c; border-radius: 10px; padding: 9px 12px; background: #fff; color: #b34d63; font: inherit; font-size: 12px; font-weight: 700; cursor: pointer; }
+.danger-button:hover { background: #fff0f2; }
 @media (max-width: 780px) { .rule-form-grid, .settings-rule-fields { grid-template-columns: 1fr; } .settings-rule { grid-template-columns: 36px minmax(0,1fr) auto auto; } .settings-rule-fields { grid-column: 2 / -1; } .rule-form-heading { display: grid; gap: 3px; } }
 .budget-empty-state {
   margin-top: 18px;

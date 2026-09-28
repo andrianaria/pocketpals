@@ -555,6 +555,31 @@ export default function Home() {
     setAutoTagRules((items) => items.filter((_, itemIndex) => itemIndex !== index));
     if (rule?.id) void fetch("/api/pocketpals", { method: "DELETE", headers: { "content-type": "application/json" }, body: JSON.stringify({ ruleId: rule.id }) });
   };
+  const resetFinancialData = async () => {
+    const confirmed = window.confirm(language === "id"
+      ? "Hapus semua transaksi, upload statement, wallet, saldo, dan rule Auto Tagging akun ini? Login tetap dipertahankan dan data tidak bisa dipulihkan."
+      : "Delete all transactions, statement uploads, wallets, balances, and Auto Tagging rules for this account? Your login stays active and this cannot be undone.");
+    if (!confirmed) return;
+    const response = await fetch("/api/pocketpals", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ action: "reset-financial-data" }),
+    });
+    if (!response.ok) {
+      setToast(language === "id" ? "Reset gagal, data belum dihapus" : "Reset failed, data was not deleted");
+      return;
+    }
+    setTransactions([]);
+    setUploads([]);
+    setWallets([]);
+    setAutoTagRules([]);
+    window.localStorage.removeItem("pocket-transactions");
+    window.localStorage.removeItem("pocket-uploads");
+    window.localStorage.removeItem("pocket-wallets");
+    window.localStorage.removeItem("pocket-auto-tag-rules");
+    setToast(language === "id" ? "Semua data finansial sudah dikosongkan" : "All financial data has been cleared");
+    window.setTimeout(() => setToast(""), 3000);
+  };
   const processFile = async (file: File) => {
     const extension = file.name.toLowerCase().split(".").pop();
     if (!extension || !["csv", "xls", "xlsx", "pdf"].includes(extension)) {
@@ -1400,6 +1425,10 @@ export default function Home() {
                 ))}
               </div>
               <p className="settings-hint">💡 {language === "id" ? "Rule pertama yang cocok akan dipakai. Kamu masih bisa mengubah kategori langsung di menu Transaksi." : "The first matching rule is used. You can still change a category directly in Transactions."}</p>
+              <div className="danger-zone">
+                <div><strong>{language === "id" ? "Mulai ulang data finansial" : "Start over with financial data"}</strong><small>{language === "id" ? "Hapus transaksi, upload, wallet, saldo, dan rule untuk akun ini. Login tetap aman." : "Delete this account's transactions, uploads, wallets, balances, and rules. Your login stays safe."}</small></div>
+                <button type="button" className="danger-button" onClick={resetFinancialData}>{language === "id" ? "Kosongkan semua data" : "Clear all data"}</button>
+              </div>
             </section>
           </section>
         )}
