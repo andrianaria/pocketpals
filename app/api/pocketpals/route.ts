@@ -102,8 +102,21 @@ async function connect() {
 
 async function ensureSchema(connection: Connection) {
   for (const statement of schemaStatements) await connection.query(statement);
-  for (const table of ["statement_uploads", "wallets", "transactions"]) {
-    try { await connection.query(`ALTER TABLE ${table} ADD COLUMN space_key VARCHAR(20) NOT NULL DEFAULT 'personal'`); } catch { /* already present */ }
+  // Keep older production databases compatible with the current canonical schema.
+  // Each statement is intentionally idempotent: MySQL has no portable
+  // ADD COLUMN IF NOT EXISTS across all supported versions.
+  const migrations = [
+    `ALTER TABLE statement_uploads ADD COLUMN space_key VARCHAR(20) NOT NULL DEFAULT 'personal'`,
+    `ALTER TABLE statement_uploads ADD COLUMN statement_period VARCHAR(80) NULL`,
+    `ALTER TABLE wallets ADD COLUMN space_key VARCHAR(20) NOT NULL DEFAULT 'personal'`,
+    `ALTER TABLE wallets ADD COLUMN account_number VARCHAR(80) NULL`,
+    `ALTER TABLE transactions ADD COLUMN external_id VARCHAR(191) NULL`,
+    `ALTER TABLE transactions ADD COLUMN space_key VARCHAR(20) NOT NULL DEFAULT 'personal'`,
+  ];
+  for (const statement of migrations) {
+    try { await connection.query(statement); } catch (error) {
+      if (!String(error).toLowerCase().includes("duplicate column")) throw error;
+    }
   }
 }
 
@@ -252,8 +265,8 @@ export async function POST(request: Request) {
     const upload = body.upload;
     const sizeBytes = Number(String(upload.size ?? "0").replace(/[^0-9]/g, "")) * 1024;
     const [existing] = await connection.execute(
-      `SELECT id FROM statement_uploads WHERE user_id = ? AND bank_key = ? AND file_name = ? ORDER BY id DESC LIMIT 1`,
-      [userId, upload.bank, upload.name],
+      `SELECT id FROM statement_uploads WHERE user_id = ? AND bank_key = ? AND file_name = ? AND space_key = ? ORDER BY id DESC LIMIT 1`,
+      [userId, upload.bank, upload.name, upload.space === "business" ? "business" : "personal"],
     );
     const existingId = (existing as Array<{ id: number }>)[0]?.id;
     if (existingId) {
@@ -318,9 +331,10 @@ export async function PATCH(request: Request) {
     if (!body.id || !body.changes) return Response.json({ error: "Invalid update payload" }, { status: 400 });
     const changes = body.changes;
     await connection.execute(
-      `UPDATE transactions SET category = COALESCE(?, category), remarks = COALESCE(?, remarks), title = COALESCE(?, title), amount = COALESCE(?, amount), transaction_date = COALESCE(?, transaction_date), space_key = COALESCE(?, space_key)
+      `UPDATE transactions SET category = COALESCE(?, category), remarks = COALESCE(?, remarks), title = COALESCE(?, title), amount = COALESCE(?, amount), direction = COALESCE(?, direction), icon = COALESCE(?, icon), color = COALESCE(?, color), transaction_date = COALESCE(?, transaction_date), space_key = COALESCE(?, space_key)
        WHERE user_id = ? AND (external_id = ? OR CAST(id AS CHAR) = ?)`,
       [changes.category ?? null, changes.note ?? null, changes.title ?? null, changes.amountValue ?? null,
+        changes.direction === "credit" ? "credit" : (changes.direction === "debit" ? "debit" : null), changes.icon ?? null, changes.color ?? null,
         cleanDate(changes.date ? String(changes.date) : undefined), changes.space === "business" ? "business" : (changes.space === "personal" ? "personal" : null), userId, body.id, body.id],
     );
     return Response.json({ ok: true });

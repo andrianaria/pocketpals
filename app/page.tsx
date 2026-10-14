@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useClerk, useUser } from "@clerk/nextjs";
+import Image from "next/image";
 import {
   Upload,
   WalletCards,
@@ -11,7 +12,6 @@ import {
   Sparkles,
   ChevronDown,
   ArrowUpRight,
-  ArrowDownRight,
   FileText,
   Search,
   Check,
@@ -37,7 +37,7 @@ type LanguageKey = "id" | "en";
 type FinancialSpace = "personal" | "business";
 type DirectionFilter = "all" | "credit" | "debit";
 type BankKey = (typeof BANK_CATALOG)[number];
-type MonthKey = "all" | "2026-09" | "2026-08" | "2026-07" | "2026-06";
+type MonthKey = "all" | `${number}-${number}`;
 type UploadItem = {
   id: number;
   name: string;
@@ -197,15 +197,14 @@ const walletAmount = (amount: number, currency: string) =>
     : `${currency} ${new Intl.NumberFormat("en-US", {
         maximumFractionDigits: 2,
       }).format(amount)}`;
-const monthOptions: { key: MonthKey; id: string; en: string }[] = [
-  { key: "all", id: "Semua bulan", en: "All months" },
-  { key: "2026-09", id: "September 2026", en: "September 2026" },
-  { key: "2026-08", id: "Agustus 2026", en: "August 2026" },
-  { key: "2026-07", id: "Juli 2026", en: "July 2026" },
-  { key: "2026-06", id: "Juni 2026", en: "June 2026" },
-];
-const transactionMonth = (date?: string) =>
-  date && date.length >= 10 ? `${date.slice(6, 10)}-${date.slice(3, 5)}` : "";
+const transactionMonth = (date?: string): MonthKey | "" => {
+  if (!date) return "";
+  const value = date.trim();
+  const iso = value.match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if (iso) return `${iso[1]}-${iso[2]}` as MonthKey;
+  const local = value.match(/^(\d{2})\/(\d{2})\/(\d{4})/);
+  return local ? `${local[3]}-${local[2]}` as MonthKey : "";
+};
 const walletKey = (wallet: ParsedWallet) =>
   [
     wallet.bank,
@@ -220,8 +219,16 @@ const uniqueWallets = (items: ParsedWallet[]) =>
 export default function Home() {
   const { user, isLoaded } = useUser();
   const { openUserProfile, signOut } = useClerk();
-  const [theme, setTheme] = useState<ThemeKey>("sakura");
-  const [language, setLanguage] = useState<LanguageKey>("id");
+  const [theme, setTheme] = useState<ThemeKey>(() => {
+    if (typeof window === "undefined") return "sakura";
+    const saved = window.localStorage.getItem("pocket-theme") as ThemeKey | null;
+    return saved && themeOptions.some((item) => item.key === saved) ? saved : "sakura";
+  });
+  const [language, setLanguage] = useState<LanguageKey>(() => {
+    if (typeof window === "undefined") return "id";
+    const saved = window.localStorage.getItem("pocket-language") as LanguageKey | null;
+    return saved === "en" ? "en" : "id";
+  });
   const [active, setActive] = useState("Overview");
   const [bank, setBank] = useState<BankKey>("DBS");
   const [monthFilter, setMonthFilter] = useState<MonthKey>("all");
@@ -235,7 +242,11 @@ export default function Home() {
   const [parseWarnings, setParseWarnings] = useState<string[]>([]);
   const [lastImportSummary, setLastImportSummary] = useState("");
   const [dataReady, setDataReady] = useState(false);
-  const [autoTagging, setAutoTagging] = useState(true);
+  const [autoTagging, setAutoTagging] = useState(() => {
+    if (typeof window === "undefined") return true;
+    const saved = window.localStorage.getItem("pocket-auto-tagging");
+    return saved === null ? true : saved === "true";
+  });
   const [autoTagRules, setAutoTagRules] = useState<AutoTagRule[]>(defaultAutoTagRules);
   const [newRule, setNewRule] = useState({ name: "", matchPattern: "", category: "Lainnya" });
   const [toast, setToast] = useState("");
@@ -243,18 +254,30 @@ export default function Home() {
   const [editingTransaction, setEditingTransaction] = useState<ParsedTransaction | null>(null);
   const [profileMenuOpen, setProfileMenuOpen] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
-  useEffect(() => {
-    const savedTheme = window.localStorage.getItem(
-      "pocket-theme",
-    ) as ThemeKey | null;
-    const savedLanguage = window.localStorage.getItem(
-      "pocket-language",
-    ) as LanguageKey | null;
-    const savedAutoTagging = window.localStorage.getItem("pocket-auto-tagging");
-    if (savedTheme) setTheme(savedTheme);
-    if (savedLanguage) setLanguage(savedLanguage);
-    if (savedAutoTagging !== null) setAutoTagging(savedAutoTagging === "true");
-  }, []);
+  const monthOptions = useMemo(() => {
+    const keys = new Set<string>();
+    const now = new Date();
+    for (let offset = 0; offset < 18; offset += 1) {
+      const date = new Date(now.getFullYear(), now.getMonth() - offset, 1);
+      keys.add(`${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}`);
+    }
+    transactions.forEach((item) => {
+      const month = transactionMonth(item.date);
+      if (month) keys.add(month);
+    });
+    const formatMonth = (key: string, locale: string) => {
+      const [year, month] = key.split("-").map(Number);
+      return new Intl.DateTimeFormat(locale, { month: "long", year: "numeric" }).format(new Date(year, month - 1, 1));
+    };
+    return [
+      { key: "all" as MonthKey, id: "Semua bulan", en: "All months" },
+      ...Array.from(keys).sort().reverse().map((key) => ({
+        key: key as MonthKey,
+        id: formatMonth(key, "id-ID"),
+        en: formatMonth(key, "en-US"),
+      })),
+    ];
+  }, [transactions]);
   useEffect(() => {
     if (!isLoaded || !user?.id) return;
     let cancelled = false;
@@ -316,7 +339,8 @@ export default function Home() {
       const savedRules = window.localStorage.getItem("pocket-auto-tag-rules");
       if (savedUploads) {
         const restoredUploads = JSON.parse(savedUploads) as UploadItem[];
-        setUploads(Array.from(new Map(restoredUploads.map((item) => [`${item.bank}:${item.name}`, { ...item, space: item.space ?? "personal" }])).values()));
+        // eslint-disable-next-line react-hooks/set-state-in-effect
+        setUploads(Array.from(new Map(restoredUploads.map((item) => [`${item.bank}:${item.name}:${item.space ?? "personal"}`, { ...item, space: item.space ?? "personal" }])).values()));
       }
       if (savedTransactions) {
         const restored = JSON.parse(savedTransactions) as ParsedTransaction[];
@@ -645,7 +669,7 @@ export default function Home() {
       const taggedTransactions = applyAutoTagRules(result.transactions);
       setTransactions((items) => {
         const hasSameUpload = uploads.some(
-          (item) => item.name === file.name && item.bank === parsedBank,
+          (item) => item.name === file.name && item.bank === parsedBank && (item.space ?? "personal") === uploadSpace,
         );
         const legacyTransactions = items.filter(
           (item) => !item.source && !item.bank,
@@ -654,7 +678,7 @@ export default function Home() {
           hasSameUpload && legacyTransactions.length === result.transactions.length;
         const keptItems = items.filter(
           (item) =>
-            item.source !== file.name &&
+            (item.source !== file.name || (item.space ?? "personal") !== uploadSpace) &&
             !(replaceLegacyImport && !item.source && !item.bank),
         );
         return [
@@ -672,7 +696,7 @@ export default function Home() {
         uniqueWallets([
           ...result.wallets.map((item) => ({ ...item, space: uploadSpace })),
           ...items.filter(
-            (item) => !(item.bank === parsedBank && item.source === file.name),
+            (item) => !(item.bank === parsedBank && item.source === file.name && (item.space ?? "personal") === uploadSpace),
           ),
         ]),
       );
@@ -694,7 +718,7 @@ export default function Home() {
           statementPeriod: result.statementPeriod,
           space: uploadSpace,
         },
-        ...items.filter((item) => !(item.name === file.name && item.bank === parsedBank)),
+        ...items.filter((item) => !(item.name === file.name && item.bank === parsedBank && (item.space ?? "personal") === uploadSpace)),
       ]);
       void fetch("/api/pocketpals", {
         method: "POST",
@@ -745,7 +769,7 @@ export default function Home() {
           warningCount: 1,
           space: uploadSpace,
         },
-        ...items.filter((item) => !(item.name === file.name && item.bank === bank)),
+          ...items.filter((item) => !(item.name === file.name && item.bank === bank && (item.space ?? "personal") === uploadSpace)),
       ]);
       setToast("File tersimpan, tapi parsing perlu review");
     }
@@ -806,9 +830,11 @@ export default function Home() {
           </div>
           <div className={`profile ${profileMenuOpen ? "profile-open" : ""}`}>
             <div className="avatar">
-              <img
+              <Image
                 src={avatarForTheme[theme]}
                 alt={`${currentTheme.label} avatar`}
+                width={40}
+                height={40}
               />
             </div>
             <button
@@ -899,7 +925,7 @@ export default function Home() {
                 className="theme-swatch"
                 style={{ background: currentTheme.colors }}
               >
-                <img src={avatarForTheme[theme]} alt="" />
+                <Image src={avatarForTheme[theme]} alt="" width={32} height={32} />
               </span>
               <select
                 aria-label="Pilih tema"
@@ -1812,9 +1838,11 @@ export default function Home() {
                     onClick={() => chooseTheme(opt.key)}
                   >
                     <span style={{ background: opt.colors }}>
-                      <img
+                      <Image
                         src={avatarForTheme[opt.key]}
                         alt={`${opt.label} avatar`}
+                        width={34}
+                        height={34}
                       />
                     </span>
                     <small>{opt.label}</small>
