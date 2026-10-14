@@ -1597,6 +1597,11 @@ select {
 .rule-switch.on span { transform: translateX(16px); }
 .rule-delete { display: grid; place-items: center; width: 30px; height: 30px; border: 0; border-radius: 9px; background: #fff0f2; color: #c95e72; cursor: pointer; }
 .settings-hint { margin: 16px 0 0; color: var(--muted); font-size: 12px; }
+.demo-data-card { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin-top: 18px; padding: 15px; border: 1px solid #d8e7fb; border-radius: 14px; background: #f7fbff; }
+.demo-data-card strong, .demo-data-card small { display: block; }
+.demo-data-card strong { color: #466caa; font-size: 13px; }
+.demo-data-card small { margin-top: 4px; color: #7890b4; font-size: 11px; line-height: 1.5; }
+.demo-data-card button:disabled { opacity: .6; cursor: wait; }
 .danger-zone { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin-top: 22px; padding: 15px; border: 1px solid #f0c9d0; border-radius: 14px; background: #fff7f8; }
 .danger-zone strong, .danger-zone small { display: block; }
 .danger-zone strong { color: #a94c61; font-size: 13px; }

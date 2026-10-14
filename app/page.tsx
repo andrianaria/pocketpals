@@ -250,6 +250,7 @@ export default function Home() {
   const [autoTagRules, setAutoTagRules] = useState<AutoTagRule[]>(defaultAutoTagRules);
   const [newRule, setNewRule] = useState({ name: "", matchPattern: "", category: "Lainnya" });
   const [toast, setToast] = useState("");
+  const [demoLoading, setDemoLoading] = useState(false);
   const [importReport, setImportReport] = useState<ImportReport | null>(null);
   const [editingTransaction, setEditingTransaction] = useState<ParsedTransaction | null>(null);
   const [profileMenuOpen, setProfileMenuOpen] = useState(false);
@@ -614,6 +615,30 @@ export default function Home() {
     window.localStorage.removeItem("pocket-auto-tag-rules");
     setToast(language === "id" ? "Semua data finansial sudah dikosongkan" : "All financial data has been cleared");
     window.setTimeout(() => setToast(""), 3000);
+  };
+  const loadDemoData = async () => {
+    setDemoLoading(true);
+    try {
+      const response = await fetch("/api/pocketpals", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ action: "seed-demo-data" }),
+      });
+      if (!response.ok) throw new Error("Demo data could not be loaded");
+      const remoteResponse = await fetch("/api/pocketpals");
+      if (!remoteResponse.ok) throw new Error("Demo data could not be refreshed");
+      const remote = await remoteResponse.json() as { uploads?: UploadItem[]; transactions?: ParsedTransaction[]; wallets?: ParsedWallet[]; rules?: AutoTagRule[] };
+      setUploads(remote.uploads ?? []);
+      setTransactions(remote.transactions ?? []);
+      setWallets(uniqueWallets(remote.wallets ?? []));
+      if (remote.rules?.length) setAutoTagRules(remote.rules);
+      setToast(language === "id" ? "Data demo 3 bulan berhasil dimuat ✨" : "Three months of demo data loaded ✨");
+    } catch {
+      setToast(language === "id" ? "Data demo gagal dimuat" : "Demo data could not be loaded");
+    } finally {
+      setDemoLoading(false);
+      window.setTimeout(() => setToast(""), 3000);
+    }
   };
   const processFile = async (file: File) => {
     const extension = file.name.toLowerCase().split(".").pop();
@@ -1491,6 +1516,10 @@ export default function Home() {
                 ))}
               </div>
               <p className="settings-hint">💡 {language === "id" ? "Rule pertama yang cocok akan dipakai. Kamu masih bisa mengubah kategori langsung di menu Transaksi." : "The first matching rule is used. You can still change a category directly in Transactions."}</p>
+              <div className="demo-data-card">
+                <div><strong>{language === "id" ? "Coba dengan akun demo" : "Try the demo account"}</strong><small>{language === "id" ? "Muat pemasukan dan pengeluaran Personal + Bisnis selama Juli–September 2026. Data real tidak dihapus." : "Load Personal + Business income and expenses for July–September 2026. Real data is not deleted."}</small></div>
+                <button type="button" className="secondary-button" onClick={loadDemoData} disabled={demoLoading}>{demoLoading ? (language === "id" ? "Memuat…" : "Loading…") : (language === "id" ? "Muat data demo" : "Load demo data")}</button>
+              </div>
               <div className="danger-zone">
                 <div><strong>{language === "id" ? "Mulai ulang data finansial" : "Start over with financial data"}</strong><small>{language === "id" ? "Hapus transaksi, upload, wallet, saldo, dan rule untuk akun ini. Login tetap aman." : "Delete this account's transactions, uploads, wallets, balances, and rules. Your login stays safe."}</small></div>
                 <button type="button" className="danger-button" onClick={resetFinancialData}>{language === "id" ? "Kosongkan semua data" : "Clear all data"}</button>

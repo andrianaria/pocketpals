@@ -176,6 +176,36 @@ function asTransaction(row: Record<string, unknown>) {
   };
 }
 
+const demoMonths = [
+  { key: "2026-07", period: "01/07/2026–31/07/2026", label: "Juli 2026" },
+  { key: "2026-08", period: "01/08/2026–31/08/2026", label: "Agustus 2026" },
+  { key: "2026-09", period: "01/09/2026–30/09/2026", label: "September 2026" },
+] as const;
+
+const demoRows = (month: string, space: "personal" | "business") => {
+  const prefix = `${month}-`;
+  if (space === "personal") {
+    return [
+      ["15", "Gaji bulanan · PT Karya", 15000000, "credit", "Pemasukan", "💼", "green", "Gaji September"],
+      ["02", "Transfer ke Tabungan Maxi", 4500000, "debit", "Transfer", "↔️", "yellow", "Alokasi tabungan"],
+      ["05", "Belanja bulanan · Supermarket", 1250000, "debit", "Belanja", "🛍️", "yellow", "Kebutuhan rumah"],
+      ["12", "Sewa apartemen", 5000000, "debit", "Lainnya", "🏠", "purple", "Pembayaran rutin"],
+      ["22", "GrabFood dan coffee", 385000, "debit", "Makanan & Minuman", "🍜", "rose", "Makan bersama teman"],
+    ].map(([day, title, amount, direction, category, icon, color, note]) => ({
+      date: `${prefix}${day}`, title, amountValue: amount, direction, category, icon, color, note,
+    }));
+  }
+  return [
+    ["03", "Penjualan proyek · Client A", 22000000, "credit", "Pemasukan", "💼", "green", "Invoice terbayar"],
+    ["07", "Pembelian stok dan supplier", 6000000, "debit", "Belanja", "📦", "yellow", "Stok bulan berjalan"],
+    ["14", "Payroll tim", 7500000, "debit", "Lainnya", "👥", "purple", "Gaji tim"],
+    ["19", "Iklan digital", 1500000, "debit", "Hiburan", "📣", "purple", "Campaign sosial media"],
+    ["26", "Pajak usaha", 800000, "debit", "Pajak", "🧾", "yellow", "Setoran pajak"],
+  ].map(([day, title, amount, direction, category, icon, color, note]) => ({
+    date: `${prefix}${day}`, title, amountValue: amount, direction, category, icon, color, note,
+  }));
+};
+
 export async function GET() {
   const identity = await requireUser();
   if (!identity) return Response.json({ error: "Unauthorized" }, { status: 401 });
@@ -247,6 +277,50 @@ export async function POST(request: Request) {
     connection = await connect();
     await ensureSchema(connection);
     const userId = await getDbUser(connection, identity);
+    if (body.action === "seed-demo-data") {
+      const [demoUploads] = await connection.execute(
+        `SELECT id FROM statement_uploads WHERE user_id = ? AND file_name LIKE 'demo-%'`,
+        [userId],
+      );
+      for (const row of demoUploads as Array<{ id: number }>) {
+        await connection.execute(`DELETE FROM transactions WHERE statement_upload_id = ?`, [row.id]);
+        await connection.execute(`DELETE FROM wallets WHERE statement_upload_id = ?`, [row.id]);
+        await connection.execute(`DELETE FROM statement_uploads WHERE id = ? AND user_id = ?`, [row.id, userId]);
+      }
+      let transactionCount = 0;
+      for (const [monthIndex, month] of demoMonths.entries()) {
+        for (const space of ["personal", "business"] as const) {
+          const bank = space === "personal" ? "DBS" : "BCA";
+          const fileName = `demo-${space}-${month.key}.csv`;
+          const rows = demoRows(month.key, space);
+          const [uploadResult] = await connection.execute(
+            `INSERT INTO statement_uploads (user_id, bank_key, file_name, file_type, file_size_bytes, parsed_rows, warning_count, statement_period, space_key)
+             VALUES (?, ?, ?, 'csv', ?, ?, 0, ?, ?)`,
+            [userId, bank, fileName, 12400 + (monthIndex * 700), rows.length, month.period, space],
+          );
+          const uploadId = Number((uploadResult as { insertId: number }).insertId);
+          const accountName = space === "personal" ? "Tabungan Maxi" : "Digibank Business";
+          const accountNumber = space === "personal" ? "**** 5678" : "**** 7766";
+          const endingBalance = space === "personal" ? 35037673 + monthIndex * 1250000 : 18500000 + monthIndex * 2100000;
+          const [walletResult] = await connection.execute(
+            `INSERT INTO wallets (user_id, statement_upload_id, bank_key, account_name, account_number, currency, ending_balance, space_key)
+             VALUES (?, ?, ?, ?, ?, 'IDR', ?, ?)`,
+            [userId, uploadId, bank, accountName, accountNumber, endingBalance, space],
+          );
+          const walletId = Number((walletResult as { insertId: number }).insertId);
+          for (const [rowIndex, item] of rows.entries()) {
+            const externalId = `demo-${space}-${month.key}-${rowIndex}`;
+            await connection.execute(
+              `INSERT INTO transactions (user_id, statement_upload_id, wallet_id, external_id, bank_key, transaction_date, title, description, remarks, meta, amount, direction, category, icon, color, source_file, space_key)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+              [userId, uploadId, walletId, externalId, bank, item.date, item.title, item.title, item.note, `${item.date} · ${item.category}`, item.amountValue, item.direction, item.category, item.icon, item.color, fileName, space],
+            );
+            transactionCount += 1;
+          }
+        }
+      }
+      return Response.json({ ok: true, demo: true, months: demoMonths.length, transactions: transactionCount });
+    }
     if (body.action === "reset-financial-data") {
       await connection.execute(`DELETE FROM transactions WHERE user_id = ?`, [userId]);
       await connection.execute(`DELETE FROM wallets WHERE user_id = ?`, [userId]);
